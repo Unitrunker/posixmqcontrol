@@ -7,5 +7,5 @@ target_link_libraries(posixmqcontrol m rt)
 add_custom_command(TARGET posixmqcontrol POST_BUILD
   COMMAND cp -f ${posixmqcontrol_SOURCE_DIR}/posixmqcontrol.1 ${PROJECT_BINARY_DIR} && gzip ${PROJECT_BINARY_DIR}/posixmqcontrol.1 )
 
-install(FILES ${CMAKE_SOURCE_DIR}/posixmqcontrol.1.gz DESTINATION man/man1)
 install(TARGETS posixmqcontrol DESTINATION bin)
+install(FILES ${PROJECT_BINARY_DIR}/posixmqcontrol.1.gz DESTINATION man/man1)
