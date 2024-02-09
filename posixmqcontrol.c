@@ -471,8 +471,8 @@ static int recv(const char *queue) {
 	}
 	char *text = (char *)malloc(actual.mq_msgsize + 1);
 	memset(text, 0, actual.mq_msgsize + 1);
-	unsigned priority = 0;
-	result = mq_receive(handle, text, actual.mq_msgsize, &priority);
+	unsigned q_priority = 0;
+	result = mq_receive(handle, text, actual.mq_msgsize, &q_priority);
 	if (result < 0) {
 		errno_t what = errno;
 		perror("mq_receive");
@@ -480,7 +480,7 @@ static int recv(const char *queue) {
 		return what;
 	}
 
-	fprintf(stdout, "[%u]: %-*.*s\n", priority, result, result, text);
+	fprintf(stdout, "[%u]: %-*.*s\n", q_priority, result, result, text);
 	
 	return mq_close(handle);
 }
