@@ -91,9 +91,6 @@
      mq_timedsend and mq_timedrecv are not implemented.  info reports a worst-
      case estimate for QSIZE.
 
-# HISTORY
-     The posixmqcontrol command appeared in FreeBSD 15.0.
-
 # AUTHORS
      The posixmqcontrol command and this manual page were written by Rick
      Parrish <unitrunker@unitrunker.net>
