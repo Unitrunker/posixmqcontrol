@@ -339,25 +339,25 @@ static bool validate_options(const struct Option **options) {
 // SUBCOMMANDS
 
 // queue: name of queue to be created.
-// creation: creation parameters (copied by value).
-static int create(const char *queue, struct Creation creation) {
+// q_creation: creation parameters (copied by value).
+static int create(const char *queue, struct Creation q_creation) {
 	int flags = O_RDWR;
-	struct mq_attr stuff = {0, creation.depth, creation.size, 0, {0}};
-	if (!creation.block) {
+	struct mq_attr stuff = {0, q_creation.depth, q_creation.size, 0, {0}};
+	if (!q_creation.block) {
 		flags |= O_NONBLOCK;
 		stuff.mq_flags |= O_NONBLOCK;
 	}
 	mqd_t handle = mq_open(queue, flags);
-	creation.exists = handle != fail;
-	if (!creation.exists) {
+	q_creation.exists = handle != fail;
+	if (!q_creation.exists) {
 		// apply size and depth checks here.
 		// if queue exists, we can default to existing depth and size.
 		// but for a new queue, we require that input.
 		if (validate_size() && validate_depth()) {
 			// no need to re-apply mode.
-			creation.set_mode = false;
+			q_creation.set_mode = false;
 			flags |= O_CREAT;
-			handle = mq_open(queue, flags, creation.mode, &stuff);
+			handle = mq_open(queue, flags, q_creation.mode, &stuff);
 		}
 	}
 	if (handle == fail) {
@@ -384,10 +384,10 @@ static int create(const char *queue, struct Creation creation) {
 		return what;
 	}
 	// do this only if group and / or user given.
-	if (creation.set_group || creation.set_user) {
-		creation.user = creation.set_user ? creation.user : status.st_uid;
-		creation.group = creation.set_group ? creation.group : status.st_gid;
-		result = fchown(fd, creation.user, creation.group);
+	if (q_creation.set_group || q_creation.set_user) {
+		q_creation.user = q_creation.set_user ? q_creation.user : status.st_uid;
+		q_creation.group = q_creation.set_group ? q_creation.group : status.st_gid;
+		result = fchown(fd, q_creation.user, q_creation.group);
 		if (result != 0) {
 			errno_t what = errno;
 			perror("fchown(create)");
@@ -396,8 +396,8 @@ static int create(const char *queue, struct Creation creation) {
 		}
 	}
 	// do this only if altering mode of an existing queue.
-	if (creation.exists && creation.set_mode && creation.mode != (status.st_mode & 0x06777)) {
-		result = fchmod(fd, creation.mode);
+	if (q_creation.exists && q_creation.set_mode && q_creation.mode != (status.st_mode & 0x06777)) {
+		result = fchmod(fd, q_creation.mode);
 		if (result != 0) {
 			errno_t what = errno;
 			perror("fchmod(create)");
@@ -487,8 +487,8 @@ static int recv(const char *queue) {
 
 // queue: name of queue to send one message.
 // text: message text.
-// priority: message priority in range of 0 to 63.
-static int send(const char *queue, const char *text, unsigned priority) {
+// q_priority: message priority in range of 0 to 63.
+static int send(const char *queue, const char *text, unsigned q_priority) {
 	mqd_t handle = mq_open(queue, O_WRONLY);
 	if (handle == fail) {
 		errno_t what = errno;
@@ -509,7 +509,7 @@ static int send(const char *queue, const char *text, unsigned priority) {
 		size = actual.mq_msgsize;
 	}
 	
-	result = mq_send(handle, text, size, priority);
+	result = mq_send(handle, text, size, q_priority);
 	if (result != 0) {
 		errno_t what = errno;
 		perror("mq_send");
