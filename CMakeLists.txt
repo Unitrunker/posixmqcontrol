@@ -6,3 +6,4 @@ target_include_directories(posixmqcontrol SYSTEM PUBLIC /usr/lib /usr/local/lib)
 target_link_libraries(posixmqcontrol m rt)
 
 install(TARGETS posixmqcontrol DESTINATION bin)
+install(FILES posixmqcontrol.1 DESTINATION man/man1)
