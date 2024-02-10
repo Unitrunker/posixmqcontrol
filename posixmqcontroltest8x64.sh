@@ -4,7 +4,7 @@
 subject='./build/posixmqcontrol'
 topic='/test123'
 
-${subject} info -q "$topic" 2>/dev/null
+${subject} info -q "$topic"
 if [ $? == 0 ]; then
   echo "sorry, $topic exists."
   exit 1

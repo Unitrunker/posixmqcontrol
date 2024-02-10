@@ -38,6 +38,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sysexits.h>
 #include <unistd.h>
 
 struct Creation {
@@ -360,7 +361,7 @@ static int create(const char *queue, struct Creation q_creation) {
 	}
 	if (handle == fail) {
 		errno_t what = errno;
-		perror("mq_open(create)");
+		warnc(what, "mq_open(create)");
 		return what;
 	}
 	
@@ -369,7 +370,7 @@ static int create(const char *queue, struct Creation q_creation) {
 	int fd = mq_getfd_np(handle);
 	if (fd < 0) {
 		errno_t what = errno;
-		perror("mq_getfd_np(create)");
+		warnc(what, "mq_getfd_np(create)");
 		mq_close(handle);
 		return what;
 	}
@@ -377,7 +378,7 @@ static int create(const char *queue, struct Creation q_creation) {
 	int result = fstat(fd, &status);
 	if (result != 0) {
 		errno_t what = errno;
-		perror("fstat(create)");
+		warnc(what, "fstat(create)");
 		mq_close(handle);
 		return what;
 	}
@@ -388,7 +389,7 @@ static int create(const char *queue, struct Creation q_creation) {
 		result = fchown(fd, q_creation.user, q_creation.group);
 		if (result != 0) {
 			errno_t what = errno;
-			perror("fchown(create)");
+			warnc(what, "fchown(create)");
 			mq_close(handle);
 			return what;
 		}
@@ -398,7 +399,7 @@ static int create(const char *queue, struct Creation q_creation) {
 		result = fchmod(fd, q_creation.mode);
 		if (result != 0) {
 			errno_t what = errno;
-			perror("fchmod(create)");
+			warnc(what, "fchmod(create)");
 			mq_close(handle);
 			return what;
 		}
@@ -413,7 +414,7 @@ static int rm(const char *queue) {
 	int result = mq_unlink(queue);
 	if (result != 0) {
 		errno_t what = errno;
-		perror("mq_unlink");
+		warnc(what, "mq_unlink");
 		return what;
 	}
 	return result;
@@ -424,14 +425,14 @@ static int info(const char *queue) {
 	mqd_t handle = mq_open(queue, O_RDONLY);
 	if (handle == fail) {
 		errno_t what = errno;
-		perror("mq_open(info)");
+		warnc(what, "mq_open(info)");
 		return what;
 	}
 	struct mq_attr actual = {0, 0, 0, 0, {0}};
 	int result = mq_getattr(handle, &actual);
 	if (result != 0) {
 		errno_t what = errno;
-		perror("mq_getattr(info)");
+		warnc(what, "mq_getattr(info)");
 		return what;
 	}
 	fprintf(stdout, "queue: '%s'\nQSIZE: %lu\nMSGSIZE: %ld\nMAXMSG: %ld\nCURMSG: %ld\nflags: %03ld\n",
@@ -441,7 +442,7 @@ static int info(const char *queue) {
 	struct stat status = {0};
 	result = fstat(fd, &status);
 	if (result != 0) {
-		perror("fstat(info)");
+		warn("fstat(info)");
 	}
 	else {
 		fprintf(stdout, "UID: %u\nGID: %u\nMODE: %03o\n", status.st_uid, status.st_gid, status.st_mode);
@@ -455,14 +456,14 @@ static int recv(const char *queue) {
 	mqd_t handle = mq_open(queue, O_RDONLY);
 	if (handle == fail) {
 		errno_t what = errno;
-		perror("mq_open(recv)");
+		warnc(what, "mq_open(recv)");
 		return what;
 	}
 	struct mq_attr actual = {0, 0, 0, 0, {0}};
 	int result = mq_getattr(handle, &actual);
 	if (result != 0) {
 		errno_t what = errno;
-		perror("mq_attr(recv)");
+		warnc(what, "mq_attr(recv)");
 		mq_close(handle);
 		return what;
 	}
@@ -472,7 +473,7 @@ static int recv(const char *queue) {
 	result = mq_receive(handle, text, actual.mq_msgsize, &q_priority);
 	if (result < 0) {
 		errno_t what = errno;
-		perror("mq_receive");
+		warnc(what, "mq_receive");
 		mq_close(handle);
 		return what;
 	}
@@ -489,27 +490,27 @@ static int send(const char *queue, const char *text, unsigned q_priority) {
 	mqd_t handle = mq_open(queue, O_WRONLY);
 	if (handle == fail) {
 		errno_t what = errno;
-		perror("mq_open(send)");
+		warnc(what, "mq_open(send)");
 		return what;
 	}
 	struct mq_attr actual = {0, 0, 0, 0, {0}};
 	int result = mq_getattr(handle, &actual);
 	if (result != 0) {
 		errno_t what = errno;
-		perror("mq_attr(send)");
+		warnc(what, "mq_attr(send)");
 		mq_close(handle);
 		return what;
 	}
 	int size = strlen(text);
 	if (size > actual.mq_msgsize) {
-		fprintf(stderr, "warning: truncating message to %ld characters.\n", actual.mq_msgsize);
+		warnx("truncating message to %ld characters.\n", actual.mq_msgsize);
 		size = actual.mq_msgsize;
 	}
 	
 	result = mq_send(handle, text, size, q_priority);
 	if (result != 0) {
 		errno_t what = errno;
-		perror("mq_send");
+		warnc(what, "mq_send");
 		mq_close(handle);
 		return what;
 	}
@@ -524,6 +525,30 @@ static void usage(FILE *file) {
 }
 
 /* end of SUBCOMMANDS */
+
+#define _countof(arg) ( (sizeof(arg)) / (sizeof((arg)[0]) ) )
+
+/* convert an errno style error code to a sysexits code. */
+static int grace(int err_number) {
+	static const int xlat[][2] = {
+		/* generally means the mqueuefs driver is not loaded. */
+		{ENOSYS, EX_UNAVAILABLE},
+		/* no such queue name. */
+		{ENOENT, EX_OSFILE},
+		{EIO, EX_IOERR},
+		{ENODEV, EX_IOERR},
+		{ENOTSUP, EX_TEMPFAIL},
+		{EAGAIN, EX_IOERR},
+		{EPERM, EX_NOPERM},
+		{EACCES, EX_NOPERM},
+		{0, EX_OK}
+	};
+	for (unsigned i = 0; i < _countof(xlat); i++) {
+		if (xlat[i][0] == err_number)
+			return xlat[i][1];
+	}
+	return EX_OSERR;	
+}
 
 /* OPTIONS tables */
 
@@ -587,9 +612,9 @@ int main(int argc, const char *argv[]) {
 					if (result != 0)
 						worst = result;
 				}
-				return worst;
+				return grace(worst);
 			}
-			return EINVAL;
+			return EX_USAGE;
 		}
 		else if ( strcmp("info", verb) == 0 || strcmp("cat", verb) == 0 ) {
 			parse_options(index, argc, argv, info_options);
@@ -602,9 +627,9 @@ int main(int argc, const char *argv[]) {
 					if (result != 0)
 						worst = result;
 				}
-				return worst;
+				return grace(worst);
 			}
-			return EINVAL;
+			return EX_USAGE;
 		}
 		if ( strcmp("send", verb) == 0 ) {
 			parse_options(index, argc, argv, send_options);
@@ -621,17 +646,18 @@ int main(int argc, const char *argv[]) {
 							worst = result;
 					}
 				}
-				return worst;
+				return grace(worst);
 			}
-			return EINVAL;
+			return EX_USAGE;
 		}
 		else if ( strcmp("recv", verb) == 0 || strcmp("receive", verb) == 0 ) {
 			parse_options(index, argc, argv, recv_options);
 			if ( validate_options(recv_options) ) {
 				const char *queue = STAILQ_FIRST(&queues)->text;				
-				return recv(queue);
+				int worst = recv(queue);
+				return grace(worst);				
 			}
-			return EINVAL;
+			return EX_USAGE;
 		}
 		else if ( strcmp("unlink", verb) == 0 || strcmp("rm", verb) == 0 ) {
 			parse_options(index, argc, argv, unlink_options);
@@ -645,9 +671,9 @@ int main(int argc, const char *argv[]) {
 					if (result != 0)
 						worst = result;
 				}
-				return worst;
+				return grace(worst);
 			}
-			return EINVAL;
+			return EX_USAGE;
 		}
 		else if (strcmp("help", verb) == 0 ) {
 			usage(stdout);
@@ -655,7 +681,7 @@ int main(int argc, const char *argv[]) {
 		}
 		else {
 			warnx("Unknown verb [%s]", verb);
-			return EINVAL;
+			return EX_USAGE;
 		}
 	}
 

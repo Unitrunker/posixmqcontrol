@@ -8,7 +8,7 @@ list=
 for i in 1 2 3 4 5 6 7 8
 do
   topic="${prefix}${i}"
-  ${subject} info -q "${topic}" 2>/dev/null
+  ${subject} info -q "${topic}"
   if [ $? == 0 ]; then
     echo "sorry, $topic exists."
     exit 1
