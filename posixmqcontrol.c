@@ -27,6 +27,7 @@
 
 #include <sys/queue.h>
 #include <sys/stat.h>
+#include <err.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <grp.h>
@@ -94,7 +95,7 @@ static void parse_long(const char *text, long *capture, const char *knob, const 
 		*capture = value;
 	}
 	else {
-		fprintf(stderr, "error: %s %s invalid format [%s].\n", knob, name, text);
+		warnx("%s %s invalid format [%s].\n", knob, name, text);
 	}
 }
 
@@ -106,7 +107,7 @@ static void parse_unsigned(const char *text, bool *set, unsigned *capture, const
 		*capture = value;
 	}
 	else {
-		fprintf(stderr, "warning: %s %s format [%s] ignored.\n", knob, name, text);
+		warnx("%s %s format [%s] ignored.\n", knob, name, text);
 	}
 }
 
@@ -114,21 +115,21 @@ static bool sane_queue(const char *text) {
 	int size = 0;
 	const char * queue = text;
 	if (*queue != '/') {
-		fprintf(stderr, "error: queue name [%-*.0s] must start with '/'.\n", PATH_MAX, text);
+		warnx("queue name [%-*.0s] must start with '/'.\n", PATH_MAX, text);
 		return false;
 	}
 	queue++;
 	size++;
 	while (*queue && size < PATH_MAX) {
 		if (*queue == '/') {
-			fprintf(stderr, "error: queue name [%-*.0s] - only one '/' permitted.\n", PATH_MAX, text);
+			warnx("queue name [%-*.0s] - only one '/' permitted.\n", PATH_MAX, text);
 			return false;
 		}
 		queue++;
 		size++;
 	}
 	if (size == PATH_MAX && *queue) {
-		fprintf(stderr, "error: queue name [%-*.0s...] may not be longer than %d.\n", PATH_MAX, text, PATH_MAX);
+		warnx("queue name [%-*.0s...] may not be longer than %d.\n", PATH_MAX, text, PATH_MAX);
 		return false;
 	}
 	return true;
@@ -150,7 +151,7 @@ static void parse_block(const char *text) {
 			creation.block = value != 0;
 		}
 		else {
-			fprintf(stderr, "warning: bad -b block format [%s] ignored.\n", text);
+			warnx("bad -b block format [%s] ignored.\n", text);
 		}
 	}
 }
@@ -185,7 +186,7 @@ static void parse_mode(const char *text)
 		creation.mode = (mode_t)value;
 	}
 	else {
-		fprintf(stderr, "warning: impossible -m mode value [%s] ignored.\n", text);
+		warnx("impossible -m mode value [%s] ignored.\n", text);
 	}
 }
 
@@ -197,11 +198,11 @@ static void parse_priority(const char *text) {
 			priority = value;
 		}
 		else {
-			fprintf(stderr, "warning: bad -p priority range [%s] ignored.\n", text);			
+			warnx("bad -p priority range [%s] ignored.\n", text);			
 		}
 	}
 	else {
-		fprintf(stderr, "warning: bad -p priority format [%s] ignored.\n", text);
+		warn("bad -p priority format [%s] ignored.\n", text);
 	}
 }
 
@@ -220,7 +221,7 @@ static void parse_single_queue(const char *queue) {
 		    n1->text = queue;
 		    STAILQ_INSERT_TAIL(&queues, n1, links);
 	    }
-		else fprintf(stderr, "warning: ignoring extra -q queue [%s].\n", queue);
+		else warnx("ignoring extra -q queue [%s].\n", queue);
 	}
 }
 
@@ -245,13 +246,13 @@ static bool validate_always_true(void) { return true; }
 
 static bool validate_content(void) {
 	bool valid = !STAILQ_EMPTY(&contents);
-	if (!valid) fprintf(stderr, "error: no content to send.\n");
+	if (!valid) warnx("no content to send.\n");
 	return valid;
 }
 
 static bool validate_depth(void) {
 	bool valid = creation.exists || creation.depth > 0;
-	if (!valid) fprintf(stderr, "error: -d maximum queue depth not provided.\n");
+	if (!valid) warnx("-d maximum queue depth not provided.\n");
 	return valid;
 }
 
@@ -259,19 +260,19 @@ static bool validate_mode(void) { return creation.mode > 0; }
 
 static bool validate_queue(void) {
 	bool valid = !STAILQ_EMPTY(&queues);
-	if (!valid) fprintf(stderr, "error: missing -q, or no sane queue name given.\n");
+	if (!valid) warnx("missing -q, or no sane queue name given.\n");
 	return valid;
 }
 
 static bool validate_single_queue(void) {
 	bool valid = !STAILQ_EMPTY(&queues) && STAILQ_NEXT(STAILQ_FIRST(&queues), links) == NULL;
-	if (!valid) fprintf(stderr, "error: expected one queue.\n");
+	if (!valid) warnx("expected one queue.\n");
 	return valid;
 }
 
 static bool validate_size(void) {
 	bool valid = creation.exists || creation.size > 0;
-	if (!valid) fprintf(stderr, "error: -s maximum message size not provided.\n");
+	if (!valid) warnx("-s maximum message size not provided.\n");
 	return valid;
 }
 
@@ -311,12 +312,12 @@ static void parse_options(int index, int argc, const char *argv[], const struct 
 			cursor++;
 		}
 		if (!match && index < argc) {
-			fprintf(stderr, "warning: skipping [%s].\n", argv[index]);
+			warnx("skipping [%s].\n", argv[index]);
 			index++;
 		}
 	}
 	if (index < argc) {
-		fprintf(stderr, "warning: skipping [%s].\n", argv[index]);
+		warnx("skipping [%s].\n", argv[index]);
 	}
 }
 
@@ -454,7 +455,6 @@ static int recv(const char *queue) {
 	if (handle == fail) {
 		errno_t what = errno;
 		perror("mq_open(recv)");
-		fprintf(stdout, "error %d\n", what);
 		return what;
 	}
 	struct mq_attr actual = {0, 0, 0, 0, {0}};
@@ -653,7 +653,7 @@ int main(int argc, const char *argv[]) {
 			return 0;
 		}
 		else {
-			fprintf(stderr, "error: Unknown verb [%s]\n", verb);
+			warnx("Unknown verb [%s]\n", verb);
 			return EINVAL;
 		}
 	}
