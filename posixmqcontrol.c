@@ -1,7 +1,7 @@
 /*-
- * Copyright (c) 2024 The FreeBSD Foundation
+ * SPDX-License-Identifier: BSD-2-Clause
  *
- * This software was written by Rick Parrish <unitrunker@unitrunker.net>.
+ * Copyright (c) 2024 Rick Parrish <unitrunker@unitrunker.net>.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -25,55 +25,51 @@
  * SUCH DAMAGE.
  */
 
-#include <mqueue.h>
-#include <fcntl.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <stdio.h>
-#include <errno.h>
-#include <sys/stat.h>
-#include <grp.h>
-#include <pwd.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
 #include <limits.h>
-
-typedef enum {false, true} bool;
-#define nullptr NULL
+#include <mqueue.h>
+#include <pwd.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
 struct Creation {
-	// true if the queue exists.
+	/* true if the queue exists. */
 	bool exists;
-	// set_mode: true if a mode value was specified.
+	/* true if a mode value was specified. */
 	bool set_mode;
-	// mode: access mode with rwx permission bits.
+	/* access mode with rwx permission bits. */
 	mode_t mode;
-	// depth: maximum queue depth. default to an invalid depth.
+	/* maximum queue depth. default to an invalid depth. */
 	long depth;
-	// size: maximum message size. default to an invalid size.
+	/* maximum message size. default to an invalid size. */
 	long size;
-	// block: true for blocking I/O and false for non-blocking I/O.
+	/* true for blocking I/O and false for non-blocking I/O. */
 	bool block;
-	// set_group: true if a group ID was specified.
+	/* true if a group ID was specified. */
 	bool set_group;
-	// group: group ID.
-	unsigned group;
-	// set_user: true if a user ID was specified.
+	/* group ID. */
+	gid_t group;
+	/* true if a user ID was specified. */
 	bool set_user;
-	// user: user ID.
-	unsigned user;
+	/* user ID. */
+	uid_t user;
 };
 
-// linked list element - used by queues and contents below.
 struct element {
     STAILQ_ENTRY(element) links;
     const char *text;
 };
-// linked list head(s) for queues and contents.
 static STAILQ_HEAD(tqh, element)
 	queues = STAILQ_HEAD_INITIALIZER(queues),
 	contents = STAILQ_HEAD_INITIALIZER(contents);
-// send defaults to medium priority.
+/* send defaults to medium priority. */
 static long priority = MQ_PRIO_MAX / 2;
 static struct Creation creation = {
 	.exists = false,
@@ -89,10 +85,10 @@ static struct Creation creation = {
 };
 static const mqd_t fail = (mqd_t)-1;
 
-// OPTIONS parsing utilitarian
+/* OPTIONS parsing utilitarian */
 
 static void parse_long(const char *text, long *capture, const char *knob, const char *name) {
-	char *cursor = nullptr;
+	char *cursor = NULL;
 	long value = strtol(text, &cursor, 10);
 	if (cursor > text) {
 		*capture = value;
@@ -103,7 +99,7 @@ static void parse_long(const char *text, long *capture, const char *knob, const 
 }
 
 static void parse_unsigned(const char *text, bool *set, unsigned *capture, const char *knob, const char *name) {
-	char *cursor = nullptr;
+	char *cursor = NULL;
 	unsigned value = strtoul(text, &cursor, 8);
 	if (cursor > text) {
 		*set = true;
@@ -138,7 +134,7 @@ static bool sane_queue(const char *text) {
 	return true;
 }
 
-// OPTIONS parsers
+/* OPTIONS parsers */
 
 static void parse_block(const char *text) {
 	if (strcmp(text, "true") == 0 || strcmp(text, "yes") == 0) {
@@ -148,7 +144,7 @@ static void parse_block(const char *text) {
 		creation.block = false;
 	}
 	else {
-		char *cursor = nullptr;
+		char *cursor = NULL;
 		long value = strtol(text, &cursor, 10);
 		if (cursor > text) {
 			creation.block = value != 0;
@@ -171,7 +167,7 @@ static void parse_depth(const char *text) {
 
 static void parse_group(const char *text) {
 	struct group* entry = getgrnam(text);
-	if (entry == nullptr) {
+	if (entry == NULL) {
 		parse_unsigned(text, &creation.set_group, &creation.group, "-g", "group");
 	}
 	else {
@@ -182,7 +178,7 @@ static void parse_group(const char *text) {
 
 static void parse_mode(const char *text)
 {
-	char *cursor = nullptr;
+	char *cursor = NULL;
 	long value = strtol(text, &cursor, 8);
 	if (cursor > text && value > 0 && value < 010000) {
 		creation.set_mode = true;
@@ -194,7 +190,7 @@ static void parse_mode(const char *text)
 }
 
 static void parse_priority(const char *text) {
-	char *cursor = nullptr;
+	char *cursor = NULL;
 	long value = strtol(text, &cursor, 10);
 	if (cursor > text) {
 		if (value >= 0 && value < MQ_PRIO_MAX) {
@@ -219,7 +215,7 @@ static void parse_queue(const char *queue) {
 
 static void parse_single_queue(const char *queue) {
 	if (sane_queue(queue)) {
-		if (STAILQ_FIRST(&queues) == nullptr) {
+		if (STAILQ_EMPTY(&queues)) {
 	    	struct element *n1 = (struct element *)malloc(sizeof(struct element));
 		    n1->text = queue;
 		    STAILQ_INSERT_TAIL(&queues, n1, links);
@@ -234,7 +230,7 @@ static void parse_size(const char *text) {
 
 static void parse_user(const char *text) {
 	struct passwd* entry = getpwnam(text);
-	if (entry == nullptr) {
+	if (entry == NULL) {
 		parse_unsigned(text, &creation.set_user, &creation.user, "-u", "user");
 	}
 	else {
@@ -243,12 +239,12 @@ static void parse_user(const char *text) {
 	}
 }
 
-// OPTIONS validators
+/* OPTIONS validators */
  
 static bool validate_always_true(void) { return true; }
 
 static bool validate_content(void) {
-	bool valid = STAILQ_FIRST(&contents) != nullptr;
+	bool valid = !STAILQ_EMPTY(&contents);
 	if (!valid) fprintf(stderr, "error: no content to send.\n");
 	return valid;
 }
@@ -262,13 +258,13 @@ static bool validate_depth(void) {
 static bool validate_mode(void) { return creation.mode > 0; }
 
 static bool validate_queue(void) {
-	bool valid = STAILQ_FIRST(&queues) != nullptr;
+	bool valid = !STAILQ_EMPTY(&queues);
 	if (!valid) fprintf(stderr, "error: missing -q, or no sane queue name given.\n");
 	return valid;
 }
 
 static bool validate_single_queue(void) {
-	bool valid = STAILQ_FIRST(&queues) != nullptr && STAILQ_NEXT(STAILQ_FIRST(&queues), links) == nullptr;
+	bool valid = !STAILQ_EMPTY(&queues) && STAILQ_NEXT(STAILQ_FIRST(&queues), links) == NULL;
 	if (!valid) fprintf(stderr, "error: expected one queue.\n");
 	return valid;
 }
@@ -279,30 +275,30 @@ static bool validate_size(void) {
 	return valid;
 }
 
-// OPTIONS table handling.
+/* OPTIONS table handling. */
 
 struct Option {
-	// points to array of string pointers terminated by a null pointer.
+	/* points to array of string pointers terminated by a null pointer. */
 	const char **pattern;
-	// parse argument.
+	/* parse argument. */
 	void (*parse)(const char *);
-	// displays an error and returns false if this parameter is not valid.
-	// returns true otherwise.
+	/* displays an error and returns false if this parameter is not valid.
+	 * returns true otherwise. */
 	bool (*validate)(void);
 };
 
-// parse options by table.
-// index - current index into argv list.
-// argc, argv - command line parameters.
-// options - null terminated list of pointers to options.
+/* parse options by table.
+ * index - current index into argv list.
+ * argc, argv - command line parameters.
+ * options - null terminated list of pointers to options. */
 static void parse_options(int index, int argc, const char *argv[], const struct Option **options) {
 	while ( (index + 1) < argc ) {
 		const struct Option **cursor = options;
 		bool match = false;
-		while (*cursor != nullptr && !match) {
+		while (*cursor != NULL && !match) {
 			const struct Option * option = cursor[0];
 			const char **pattern = option->pattern;
-			while (*pattern != nullptr && !match) {
+			while (*pattern != NULL && !match) {
 				const char *knob = *pattern;
 				match = strcmp(knob, argv[index]) == 0;
 				if (!match) pattern++;
@@ -324,10 +320,10 @@ static void parse_options(int index, int argc, const char *argv[], const struct 
 	}
 }
 
-// options - null terminated list of pointers to options.
+/* options - null terminated list of pointers to options. */
 static bool validate_options(const struct Option **options) {
 	bool valid = true;
-	while (*options != nullptr) {
+	while (*options != NULL) {
 		const struct Option *option = options[0];
 		if (!option->validate())
 			valid = false;
@@ -336,10 +332,10 @@ static bool validate_options(const struct Option **options) {
 	return valid;
 }
 
-// SUBCOMMANDS
+/* SUBCOMMANDS */
 
-// queue: name of queue to be created.
-// q_creation: creation parameters (copied by value).
+/* queue: name of queue to be created.
+ * q_creation: creation parameters (copied by value). */
 static int create(const char *queue, struct Creation q_creation) {
 	int flags = O_RDWR;
 	struct mq_attr stuff = {0, q_creation.depth, q_creation.size, 0, {0}};
@@ -350,11 +346,11 @@ static int create(const char *queue, struct Creation q_creation) {
 	mqd_t handle = mq_open(queue, flags);
 	q_creation.exists = handle != fail;
 	if (!q_creation.exists) {
-		// apply size and depth checks here.
-		// if queue exists, we can default to existing depth and size.
-		// but for a new queue, we require that input.
+		/* apply size and depth checks here.
+		 * if queue exists, we can default to existing depth and size.
+		 * but for a new queue, we require that input. */
 		if (validate_size() && validate_depth()) {
-			// no need to re-apply mode.
+			/* no need to re-apply mode. */
 			q_creation.set_mode = false;
 			flags |= O_CREAT;
 			handle = mq_open(queue, flags, q_creation.mode, &stuff);
@@ -367,7 +363,7 @@ static int create(const char *queue, struct Creation q_creation) {
 	}
 	
 #if __BSD_VISIBLE
-	// undocumented. See https://bugs.freebsd.org/bugzilla//show_bug.cgi?id=273230
+	/* undocumented. See https://bugs.freebsd.org/bugzilla//show_bug.cgi?id=273230 */
 	int fd = mq_getfd_np(handle);
 	if (fd < 0) {
 		errno_t what = errno;
@@ -383,7 +379,7 @@ static int create(const char *queue, struct Creation q_creation) {
 		mq_close(handle);
 		return what;
 	}
-	// do this only if group and / or user given.
+	/* do this only if group and / or user given. */
 	if (q_creation.set_group || q_creation.set_user) {
 		q_creation.user = q_creation.set_user ? q_creation.user : status.st_uid;
 		q_creation.group = q_creation.set_group ? q_creation.group : status.st_gid;
@@ -395,7 +391,7 @@ static int create(const char *queue, struct Creation q_creation) {
 			return what;
 		}
 	}
-	// do this only if altering mode of an existing queue.
+	/* do this only if altering mode of an existing queue. */
 	if (q_creation.exists && q_creation.set_mode && q_creation.mode != (status.st_mode & 0x06777)) {
 		result = fchmod(fd, q_creation.mode);
 		if (result != 0) {
@@ -405,12 +401,12 @@ static int create(const char *queue, struct Creation q_creation) {
 			return what;
 		}
 	}
-#endif
+#endif /* __BSD_VISIBLE */
 	
 	return mq_close(handle);
 }
 
-// queue: name of queue to be removed.
+/* queue: name of queue to be removed. */
 static int rm(const char *queue) {
 	int result = mq_unlink(queue);
 	if (result != 0) {
@@ -421,7 +417,7 @@ static int rm(const char *queue) {
 	return result;
 }
 
-// queue: name of queue to be inspected.
+/* queue: name of queue to be inspected. */
 static int info(const char *queue) {
 	mqd_t handle = mq_open(queue, O_RDONLY);
 	if (handle == fail) {
@@ -448,11 +444,11 @@ static int info(const char *queue) {
 	else {
 		fprintf(stdout, "UID: %u\nGID: %u\nMODE: %03o\n", status.st_uid, status.st_gid, status.st_mode);
 	}
-#endif
+#endif /* __BSD_VISIBLE */
 	return mq_close(handle);
 }
 
-// queue: name of queue to drain one message.
+/* queue: name of queue to drain one message. */
 static int recv(const char *queue) {
 	mqd_t handle = mq_open(queue, O_RDONLY);
 	if (handle == fail) {
@@ -485,9 +481,9 @@ static int recv(const char *queue) {
 	return mq_close(handle);
 }
 
-// queue: name of queue to send one message.
-// text: message text.
-// q_priority: message priority in range of 0 to 63.
+/* queue: name of queue to send one message.
+ * text: message text.
+ * q_priority: message priority in range of 0 to 63. */
 static int send(const char *queue, const char *text, unsigned q_priority) {
 	mqd_t handle = mq_open(queue, O_WRONLY);
 	if (handle == fail) {
@@ -526,50 +522,50 @@ static void usage(FILE *file) {
 	    "\tposixmqcontrol send -q <queue> -c <content> [-p <priority> ]\n");
 }
 
-// end of SUBCOMMANDS
+/* end of SUBCOMMANDS */
 
-// OPTIONS tables
+/* OPTIONS tables */
 
-// careful: these 'names' arrays must be terminated by a null pointer.
-static const char *names_queue[] = {"-q", "--queue", "-t", "--topic", nullptr};
+/* careful: these 'names' arrays must be terminated by a null pointer. */
+static const char *names_queue[] = {"-q", "--queue", "-t", "--topic", NULL};
 static const struct Option option_queue = {names_queue, parse_queue, validate_queue};
 static const struct Option option_single_queue = {names_queue, parse_single_queue, validate_single_queue};
-static const char *names_depth[] = {"-d", "--depth", "--maxmsg", nullptr};
+static const char *names_depth[] = {"-d", "--depth", "--maxmsg", NULL};
 static const struct Option option_depth = {names_depth, parse_depth, validate_always_true};
-static const char *names_size[] = {"-s", "--size", "--msgsize", nullptr};
+static const char *names_size[] = {"-s", "--size", "--msgsize", NULL};
 static const struct Option option_size = {names_size, parse_size, validate_always_true};
-static const char *names_block[] = {"-b", "--block", nullptr};
+static const char *names_block[] = {"-b", "--block", NULL};
 static const struct Option option_block = {names_block, parse_block, validate_always_true};
-static const char *names_content[] = {"-c", "--content", "--data", "--message", nullptr};
+static const char *names_content[] = {"-c", "--content", "--data", "--message", NULL};
 static const struct Option option_content = {names_content, parse_content, validate_content};
-static const char *names_priority[] = {"-p", "--priority", nullptr};
+static const char *names_priority[] = {"-p", "--priority", NULL};
 static const struct Option option_priority = {names_priority, parse_priority, validate_always_true};
-static const char *names_mode[] = {"-m", "--mode", nullptr};
+static const char *names_mode[] = {"-m", "--mode", NULL};
 static const struct Option option_mode = {names_mode, parse_mode, validate_mode};
-static const char *names_group[] = {"-g", "--gid", nullptr};
+static const char *names_group[] = {"-g", "--gid", NULL};
 static const struct Option option_group = {names_group, parse_group, validate_always_true};
-static const char *names_user[] = {"-u", "--uid", nullptr};
+static const char *names_user[] = {"-u", "--uid", NULL};
 static const struct Option option_user = {names_user, parse_user, validate_always_true};
 
-// careful: these arrays must be terminated by a null pointer.
+/* careful: these arrays must be terminated by a null pointer. */
 #if __BSD_VISIBLE
-static const struct Option *create_options[] = {&option_queue, &option_depth, &option_size, &option_block, &option_mode, &option_group, &option_user, nullptr};
-#else
-static const struct Option *create_options[] = {&option_queue, &option_depth, &option_size, &option_block, &option_mode, nullptr};
-#endif
-static const struct Option *info_options[] = {&option_queue, nullptr};
-static const struct Option *unlink_options[] = {&option_queue, nullptr};
-static const struct Option *recv_options[] = {&option_single_queue, nullptr};
-static const struct Option *send_options[] = {&option_queue, &option_content, &option_priority, nullptr};
+static const struct Option *create_options[] = {&option_queue, &option_depth, &option_size, &option_block, &option_mode, &option_group, &option_user, NULL};
+#else  /* !__BSD_VISIBLE */
+static const struct Option *create_options[] = {&option_queue, &option_depth, &option_size, &option_block, &option_mode, NULL};
+#endif /* __BSD_VISIBLE */
+static const struct Option *info_options[] = {&option_queue, NULL};
+static const struct Option *unlink_options[] = {&option_queue, NULL};
+static const struct Option *recv_options[] = {&option_single_queue, NULL};
+static const struct Option *send_options[] = {&option_queue, &option_content, &option_priority, NULL};
 
-// 12 mode bits ugsrwxrwxrwx
-// g = GID
-// u = UID
-// s = sticky bit (ignored)
-// three rwx fields for owner, group, and world.
-// r = read
-// w = write
-// x = execute
+/* 12 mode bits ugsrwxrwxrwx
+ * g = GID
+ * u = UID
+ * s = sticky bit (ignored)
+ * three rwx fields for owner, group, and world.
+ * r = read
+ * w = write
+ * x = execute */
 
 int main(int argc, const char *argv[]) {
     STAILQ_INIT(&queues);
