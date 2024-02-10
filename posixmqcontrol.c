@@ -27,6 +27,7 @@
 
 #include <sys/queue.h>
 #include <sys/stat.h>
+#include <sys/syslimits.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -113,25 +114,24 @@ static void parse_unsigned(const char *text, bool *set, unsigned *capture, const
 }
 
 static bool sane_queue(const char *text) {
-	static const int maximum = 255;
 	int size = 0;
 	const char * queue = text;
 	if (*queue != '/') {
-		warnx("queue name [%-.*s] must start with '/'.", maximum, text);
+		warnx("queue name [%-.*s] must start with '/'.", NAME_MAX, text);
 		return false;
 	}
 	queue++;
 	size++;
-	while (*queue && size < maximum) {
+	while (*queue && size < NAME_MAX) {
 		if (*queue == '/') {
-			warnx("queue name [%-.*s] - only one '/' permitted.", maximum, text);
+			warnx("queue name [%-.*s] - only one '/' permitted.", NAME_MAX, text);
 			return false;
 		}
 		queue++;
 		size++;
 	}
-	if (size == maximum && *queue) {
-		warnx("queue name [%-.*s...] may not be longer than %d.", maximum, text, maximum);
+	if (size == NAME_MAX && *queue) {
+		warnx("queue name [%-.*s...] may not be longer than %d.", NAME_MAX, text, NAME_MAX);
 		return false;
 	}
 	return true;
