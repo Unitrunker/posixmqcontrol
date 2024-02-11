@@ -586,7 +586,7 @@ info(const char *queue)
 			quad(mode & 00010, mode & 02000),
 			dual(mode & 00004, 'r'),
 			dual(mode & 00002, 'w'),
-			dual(mode & 00001, 'r'));
+			dual(mode & 00001, 'x'));
 	}
 #endif /* __FreeBSD__ */
 
