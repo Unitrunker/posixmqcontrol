@@ -69,7 +69,8 @@ struct element {
 	const char *text;
 };
 
-static struct element *malloc_element(void)
+static struct element *
+malloc_element(void)
 {
 	return malloc(sizeof(struct element));
 }
@@ -95,7 +96,8 @@ static const mqd_t fail = (mqd_t)-1;
 
 /* OPTIONS parsing utilitarian */
 
-static void parse_long(const char *text,
+static void
+parse_long(const char *text,
 	long *capture, const char *knob, const char *name)
 {
 	char *cursor = NULL;
@@ -108,7 +110,8 @@ static void parse_long(const char *text,
 	}
 }
 
-static void parse_unsigned(const char *text, bool *set,
+static void
+parse_unsigned(const char *text, bool *set,
    unsigned *capture, const char *knob, const char *name)
 {
 	char *cursor = NULL;
@@ -122,7 +125,8 @@ static void parse_unsigned(const char *text, bool *set,
 	}
 }
 
-static bool sane_queue(const char *text)
+static bool
+sane_queue(const char *text)
 {
 	int size = 0;
 	const char *queue = text;
@@ -134,7 +138,7 @@ static bool sane_queue(const char *text)
 
 	queue++;
 	size++;
-	while (*queue && size < NAME_MAX) {
+	while (*queue != 0 && size < NAME_MAX) {
 		if (*queue == '/') {
 			warnx("queue name [%-.*s] - only one '/' permitted.",
 				NAME_MAX, text);
@@ -154,7 +158,8 @@ static bool sane_queue(const char *text)
 
 /* OPTIONS parsers */
 
-static void parse_block(const char *text)
+static void
+parse_block(const char *text)
 {
 	if (strcmp(text, "true") == 0 || strcmp(text, "yes") == 0) {
 		creation.block = true;
@@ -171,7 +176,8 @@ static void parse_block(const char *text)
 	}
 }
 
-static void parse_content(const char *content)
+static void
+parse_content(const char *content)
 {
 	struct element *n1 = malloc_element();
 
@@ -179,12 +185,14 @@ static void parse_content(const char *content)
 	STAILQ_INSERT_TAIL(&contents, n1, links);
 }
 
-static void parse_depth(const char *text)
+static void
+parse_depth(const char *text)
 {
 	parse_long(text, &creation.depth, "-d", "depth");
 }
 
-static void parse_group(const char *text)
+static void
+parse_group(const char *text)
 {
 	struct group *entry = getgrnam(text);
 
@@ -197,7 +205,8 @@ static void parse_group(const char *text)
 	}
 }
 
-static void parse_mode(const char *text)
+static void
+parse_mode(const char *text)
 {
 	char *cursor = NULL;
 	long value = strtol(text, &cursor, 8);
@@ -210,7 +219,8 @@ static void parse_mode(const char *text)
 	}
 }
 
-static void parse_priority(const char *text)
+static void
+parse_priority(const char *text)
 {
 	char *cursor = NULL;
 	long value = strtol(text, &cursor, 10);
@@ -227,7 +237,8 @@ static void parse_priority(const char *text)
 	}
 }
 
-static void parse_queue(const char *queue)
+static void
+parse_queue(const char *queue)
 {
 	if (sane_queue(queue)) {
 		struct element *n1 = malloc_element();
@@ -236,7 +247,8 @@ static void parse_queue(const char *queue)
 	}
 }
 
-static void parse_single_queue(const char *queue)
+static void
+parse_single_queue(const char *queue)
 {
 	if (sane_queue(queue)) {
 		if (STAILQ_EMPTY(&queues)) {
@@ -248,12 +260,14 @@ static void parse_single_queue(const char *queue)
 	}
 }
 
-static void parse_size(const char *text)
+static void
+parse_size(const char *text)
 {
 	parse_long(text, &creation.size, "-s", "size");
 }
 
-static void parse_user(const char *text)
+static void
+parse_user(const char *text)
 {
 	struct passwd *entry = getpwnam(text);
 	if (entry == NULL) {
@@ -267,9 +281,11 @@ static void parse_user(const char *text)
 
 /* OPTIONS validators */
 
-static bool validate_always_true(void) { return (true); }
+static bool
+validate_always_true(void) { return (true); }
 
-static bool validate_content(void)
+static bool
+validate_content(void)
 {
 	bool valid = !STAILQ_EMPTY(&contents);
 
@@ -278,7 +294,8 @@ static bool validate_content(void)
 	return (valid);
 }
 
-static bool validate_depth(void)
+static bool
+validate_depth(void)
 {
 	bool valid = creation.exists || creation.depth > 0;
 
@@ -287,9 +304,11 @@ static bool validate_depth(void)
 	return (valid);
 }
 
-static bool validate_mode(void) { return creation.mode > 0; }
+static bool
+validate_mode(void) { return creation.mode > 0; }
 
-static bool validate_queue(void)
+static bool
+validate_queue(void)
 {
 	bool valid = !STAILQ_EMPTY(&queues);
 
@@ -298,7 +317,8 @@ static bool validate_queue(void)
 	return (valid);
 }
 
-static bool validate_single_queue(void)
+static bool
+validate_single_queue(void)
 {
 	bool valid = !STAILQ_EMPTY(&queues) &&
 		STAILQ_NEXT(STAILQ_FIRST(&queues), links) == NULL;
@@ -308,7 +328,8 @@ static bool validate_single_queue(void)
 	return (valid);
 }
 
-static bool validate_size(void)
+static bool
+validate_size(void)
 {
 	bool valid = creation.exists || creation.size > 0;
 
@@ -337,7 +358,8 @@ struct Option {
  * argc, argv - command line parameters.
  * options - null terminated list of pointers to options.
  */
-static void parse_options(int index, int argc,
+static void
+parse_options(int index, int argc,
 	const char *argv[], const struct Option **options)
 {
 	while ((index + 1) < argc) {
@@ -375,7 +397,8 @@ static void parse_options(int index, int argc,
 }
 
 /* options - null terminated list of pointers to options. */
-static bool validate_options(const struct Option **options)
+static bool
+validate_options(const struct Option **options)
 {
 	bool valid = true;
 
@@ -395,7 +418,8 @@ static bool validate_options(const struct Option **options)
  * queue: name of queue to be created.
  * q_creation: creation parameters (copied by value).
  */
-static int create(const char *queue, struct Creation q_creation)
+static int
+create(const char *queue, struct Creation q_creation)
 {
 	int flags = O_RDWR;
 	struct mq_attr stuff = {0, q_creation.depth, q_creation.size, 0, {0} };
@@ -481,7 +505,8 @@ static int create(const char *queue, struct Creation q_creation)
 }
 
 /* queue: name of queue to be removed. */
-static int rm(const char *queue)
+static int
+rm(const char *queue)
 {
 	int result = mq_unlink(queue);
 
@@ -495,13 +520,15 @@ static int rm(const char *queue)
 }
 
 /* Return the display character for non-zero mode. */
-static char dual(mode_t mode, char display)
+static char
+dual(mode_t mode, char display)
 {
 	return mode != 0 ? display : '-';
 }
 
 /* Select one of four display characters based on mode and modifier. */
-static char quad(mode_t mode, mode_t modifier)
+static char
+quad(mode_t mode, mode_t modifier)
 {
 	static const char display[] = "-xSs";
 	unsigned index = 0;
@@ -513,7 +540,8 @@ static char quad(mode_t mode, mode_t modifier)
 }
 
 /* queue: name of queue to be inspected. */
-static int info(const char *queue)
+static int
+info(const char *queue)
 {
 	mqd_t handle = mq_open(queue, O_RDONLY);
 
@@ -566,7 +594,8 @@ static int info(const char *queue)
 }
 
 /* queue: name of queue to drain one message. */
-static int recv(const char *queue)
+static int
+recv(const char *queue)
 {
 	mqd_t handle = mq_open(queue, O_RDONLY);
 
@@ -608,7 +637,8 @@ static int recv(const char *queue)
  * text: message text.
  * q_priority: message priority in range of 0 to 63.
  */
-static int send(const char *queue, const char *text,
+static int
+send(const char *queue, const char *text,
 	unsigned q_priority)
 {
 	mqd_t handle = mq_open(queue, O_WRONLY);
@@ -649,7 +679,8 @@ static int send(const char *queue, const char *text,
 	return (mq_close(handle));
 }
 
-static void usage(FILE *file)
+static void
+usage(FILE *file)
 {
 	fprintf(file,
 		"usage:\n\tposixmqcontrol [rm|info|recv] -q <queue>\n"
@@ -664,7 +695,8 @@ static void usage(FILE *file)
 #define _countof(arg) ((sizeof(arg)) / (sizeof((arg)[0])))
 
 /* convert an errno style error code to a sysexits code. */
-static int grace(int err_number)
+static int
+grace(int err_number)
 {
 	static const int xlat[][2] = {
 		/* generally means the mqueuefs driver is not loaded. */
@@ -738,7 +770,8 @@ static const struct Option *recv_options[] = {&option_single_queue, NULL};
 static const struct Option *send_options[] = {
 	&option_queue, &option_content, &option_priority, NULL};
 
-int main(int argc, const char *argv[])
+int
+main(int argc, const char *argv[])
 {
 	STAILQ_INIT(&queues);
 	STAILQ_INIT(&contents);
