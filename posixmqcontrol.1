@@ -24,7 +24,7 @@
 .\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 .\" SUCH DAMAGE.
 .\"
-.Dd February 7, 2024
+.Dd February 10, 2024
 .Dt POSIXMQCONTROL 1
 .Os
 .Sh NAME
@@ -117,8 +117,12 @@ once all writers have been updated to write to the new queue.
 .El
 .Sh EXIT STATUS
 .Ex -std
-An exit value of 78 (ENOSYS) usually means the mqueuefs kernel module
-is not loaded.
+.Bl -bullet
+.It
+EX_NOTAVAILABLE usually means the mqueuefs kernel module is not loaded.
+.It
+EX_USAGE reports one or more incorrect parameters.
+.El
 .Sh EXAMPLES
 .Bl -bullet
 .It

@@ -27,7 +27,6 @@
 
 #include <sys/queue.h>
 #include <sys/stat.h>
-#include <sys/syslimits.h>
 #include <err.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -43,648 +42,752 @@
 #include <unistd.h>
 
 struct Creation {
-	/* true if the queue exists. */
-	bool exists;
-	/* true if a mode value was specified. */
-	bool set_mode;
-	/* access mode with rwx permission bits. */
-	mode_t mode;
-	/* maximum queue depth. default to an invalid depth. */
-	long depth;
-	/* maximum message size. default to an invalid size. */
-	long size;
-	/* true for blocking I/O and false for non-blocking I/O. */
-	bool block;
-	/* true if a group ID was specified. */
-	bool set_group;
-	/* group ID. */
-	gid_t group;
-	/* true if a user ID was specified. */
-	bool set_user;
-	/* user ID. */
-	uid_t user;
+    /* true if the queue exists. */
+    bool exists;
+    /* true if a mode value was specified. */
+    bool set_mode;
+    /* access mode with rwx permission bits. */
+    mode_t mode;
+    /* maximum queue depth. default to an invalid depth. */
+    long depth;
+    /* maximum message size. default to an invalid size. */
+    long size;
+    /* true for blocking I/O and false for non-blocking I/O. */
+    bool block;
+    /* true if a group ID was specified. */
+    bool set_group;
+    /* group ID. */
+    gid_t group;
+    /* true if a user ID was specified. */
+    bool set_user;
+    /* user ID. */
+    uid_t user;
 };
 
 struct element {
     STAILQ_ENTRY(element) links;
     const char *text;
 };
+
+static struct element *malloc_element(void)
+{
+    static const unsigned element_size = sizeof(struct element);
+    return (struct element *)malloc(element_size);
+}
+
 static STAILQ_HEAD(tqh, element)
-	queues = STAILQ_HEAD_INITIALIZER(queues),
-	contents = STAILQ_HEAD_INITIALIZER(contents);
+    queues = STAILQ_HEAD_INITIALIZER(queues),
+    contents = STAILQ_HEAD_INITIALIZER(contents);
 /* send defaults to medium priority. */
 static long priority = MQ_PRIO_MAX / 2;
 static struct Creation creation = {
-	.exists = false,
-	.set_mode = false,
-	.mode = 0755,
-	.depth = -1,
-	.size = -1,
-	.block = true,
-	.set_group = false,
-	.group = 0,
-	.set_user = false,
-	.user = 0
+    .exists = false,
+    .set_mode = false,
+    .mode = 0755,
+    .depth = -1,
+    .size = -1,
+    .block = true,
+    .set_group = false,
+    .group = 0,
+    .set_user = false,
+    .user = 0
 };
 static const mqd_t fail = (mqd_t)-1;
 
 /* OPTIONS parsing utilitarian */
 
-static void parse_long(const char *text, long *capture, const char *knob, const char *name) {
-	char *cursor = NULL;
-	long value = strtol(text, &cursor, 10);
-	if (cursor > text) {
-		*capture = value;
-	}
-	else {
-		warnx("%s %s invalid format [%s].", knob, name, text);
-	}
+static void parse_long(const char *text, long *capture, const char *knob,
+                       const char *name)
+{
+    char *cursor = NULL;
+    long value = strtol(text, &cursor, 10);
+    if (cursor > text) {
+        *capture = value;
+    } else {
+        warnx("%s %s invalid format [%s].", knob, name, text);
+    }
 }
 
-static void parse_unsigned(const char *text, bool *set, unsigned *capture, const char *knob, const char *name) {
-	char *cursor = NULL;
-	unsigned value = strtoul(text, &cursor, 8);
-	if (cursor > text) {
-		*set = true;
-		*capture = value;
-	}
-	else {
-		warnx("%s %s format [%s] ignored.", knob, name, text);
-	}
+static void parse_unsigned(const char *text, bool *set, unsigned *capture,
+                           const char *knob, const char *name)
+{
+    char *cursor = NULL;
+    unsigned value = strtoul(text, &cursor, 8);
+    if (cursor > text) {
+        *set = true;
+        *capture = value;
+    } else {
+        warnx("%s %s format [%s] ignored.", knob, name, text);
+    }
 }
 
-static bool sane_queue(const char *text) {
-	int size = 0;
-	const char * queue = text;
-	if (*queue != '/') {
-		warnx("queue name [%-.*s] must start with '/'.", NAME_MAX, text);
-		return false;
-	}
-	queue++;
-	size++;
-	while (*queue && size < NAME_MAX) {
-		if (*queue == '/') {
-			warnx("queue name [%-.*s] - only one '/' permitted.", NAME_MAX, text);
-			return false;
-		}
-		queue++;
-		size++;
-	}
-	if (size == NAME_MAX && *queue) {
-		warnx("queue name [%-.*s...] may not be longer than %d.", NAME_MAX, text, NAME_MAX);
-		return false;
-	}
-	return true;
+static bool sane_queue(const char *text)
+{
+    int size = 0;
+    const char *queue = text;
+    if (*queue != '/') {
+        warnx("queue name [%-.*s] must start with '/'.", NAME_MAX, text);
+        return (false);
+    }
+
+    queue++;
+    size++;
+    while (*queue && size < NAME_MAX) {
+        if (*queue == '/') {
+            warnx("queue name [%-.*s] - only one '/' permitted.",
+                  NAME_MAX, text);
+            return (false);
+        }
+        queue++;
+        size++;
+    }
+
+    if (size == NAME_MAX && *queue) {
+        warnx("queue name [%-.*s...] may not be longer than %d.",
+              NAME_MAX, text, NAME_MAX);
+        return (false);
+    }
+    return (true);
 }
 
 /* OPTIONS parsers */
 
-static void parse_block(const char *text) {
-	if (strcmp(text, "true") == 0 || strcmp(text, "yes") == 0) {
-		creation.block = true;
-	}
-	else if (strcmp(text, "false") == 0 || strcmp(text, "no") == 0) {
-		creation.block = false;
-	}
-	else {
-		char *cursor = NULL;
-		long value = strtol(text, &cursor, 10);
-		if (cursor > text) {
-			creation.block = value != 0;
-		}
-		else {
-			warnx("bad -b block format [%s] ignored.", text);
-		}
-	}
+static void parse_block(const char *text)
+{
+    if (strcmp(text, "true") == 0 || strcmp(text, "yes") == 0) {
+        creation.block = true;
+    } else if (strcmp(text, "false") == 0 || strcmp(text, "no") == 0) {
+        creation.block = false;
+    } else {
+        char *cursor = NULL;
+        long value = strtol(text, &cursor, 10);
+        if (cursor > text) {
+            creation.block = value != 0;
+        } else {
+            warnx("bad -b block format [%s] ignored.", text);
+        }
+    }
 }
 
-static void parse_content(const char *content) {
-   	struct element *n1 = (struct element *)malloc(sizeof(struct element));
+static void parse_content(const char *content)
+{
+    struct element *n1 = malloc_element();
     n1->text = content;
     STAILQ_INSERT_TAIL(&contents, n1, links);
 }
 
-static void parse_depth(const char *text) {
-	parse_long(text, &creation.depth, "-d", "depth");
+static void parse_depth(const char *text)
+{
+    parse_long(text, &creation.depth, "-d", "depth");
 }
 
-static void parse_group(const char *text) {
-	struct group* entry = getgrnam(text);
-	if (entry == NULL) {
-		parse_unsigned(text, &creation.set_group, &creation.group, "-g", "group");
-	}
-	else {
-		creation.set_group = true;
-		creation.group = entry->gr_gid;
-	}
+static void parse_group(const char *text)
+{
+    struct group *entry = getgrnam(text);
+    if (entry == NULL) {
+        parse_unsigned(text, &creation.set_group, &creation.group,
+                       "-g", "group");
+    } else {
+        creation.set_group = true;
+        creation.group = entry->gr_gid;
+    }
 }
 
 static void parse_mode(const char *text)
 {
-	char *cursor = NULL;
-	long value = strtol(text, &cursor, 8);
-	if (cursor > text && value > 0 && value < 010000) {
-		creation.set_mode = true;
-		creation.mode = (mode_t)value;
-	}
-	else {
-		warnx("impossible -m mode value [%s] ignored.", text);
-	}
-}
-
-static void parse_priority(const char *text) {
-	char *cursor = NULL;
-	long value = strtol(text, &cursor, 10);
-	if (cursor > text) {
-		if (value >= 0 && value < MQ_PRIO_MAX) {
-			priority = value;
-		}
-		else {
-			warnx("bad -p priority range [%s] ignored.", text);			
-		}
-	}
-	else {
-		warnx("bad -p priority format [%s] ignored.", text);
-	}
-}
-
-static void parse_queue(const char *queue) {
-	if (sane_queue(queue)) {
-    	struct element *n1 = (struct element *)malloc(sizeof(struct element));
-	    n1->text = queue;
-	    STAILQ_INSERT_TAIL(&queues, n1, links);
+    char *cursor = NULL;
+    long value = strtol(text, &cursor, 8);
+    if (cursor > text && value > 0 && value < 010000) {
+        creation.set_mode = true;
+        creation.mode = (mode_t)value;
+    } else {
+        warnx("impossible -m mode value [%s] ignored.", text);
     }
 }
 
-static void parse_single_queue(const char *queue) {
-	if (sane_queue(queue)) {
-		if (STAILQ_EMPTY(&queues)) {
-	    	struct element *n1 = (struct element *)malloc(sizeof(struct element));
-		    n1->text = queue;
-		    STAILQ_INSERT_TAIL(&queues, n1, links);
-	    }
-		else warnx("ignoring extra -q queue [%s].", queue);
-	}
+static void parse_priority(const char *text)
+{
+    char *cursor = NULL;
+    long value = strtol(text, &cursor, 10);
+    if (cursor > text) {
+        if (value >= 0 && value < MQ_PRIO_MAX) {
+            priority = value;
+        } else {
+            warnx("bad -p priority range [%s] ignored.", text);
+        }
+
+    } else {
+        warnx("bad -p priority format [%s] ignored.", text);
+    }
 }
 
-static void parse_size(const char *text) {
-	parse_long(text, &creation.size, "-s", "size");
+static void parse_queue(const char *queue)
+{
+    if (sane_queue(queue)) {
+        struct element *n1 = malloc_element();
+        n1->text = queue;
+        STAILQ_INSERT_TAIL(&queues, n1, links);
+    }
 }
 
-static void parse_user(const char *text) {
-	struct passwd* entry = getpwnam(text);
-	if (entry == NULL) {
-		parse_unsigned(text, &creation.set_user, &creation.user, "-u", "user");
-	}
-	else {
-		creation.set_user = true;
-		creation.user = entry->pw_uid;
-	}
+static void parse_single_queue(const char *queue)
+{
+    if (sane_queue(queue)) {
+        if (STAILQ_EMPTY(&queues)) {
+            struct element *n1 = malloc_element();
+            n1->text = queue;
+            STAILQ_INSERT_TAIL(&queues, n1, links);
+        } else
+        	warnx("ignoring extra -q queue [%s].", queue);
+    }
+}
+
+static void parse_size(const char *text)
+{
+    parse_long(text, &creation.size, "-s", "size");
+}
+
+static void parse_user(const char *text)
+{
+    struct passwd *entry = getpwnam(text);
+    if (entry == NULL) {
+        parse_unsigned(text, &creation.set_user, &creation.user,
+                       "-u", "user");
+    } else {
+        creation.set_user = true;
+        creation.user = entry->pw_uid;
+    }
 }
 
 /* OPTIONS validators */
- 
-static bool validate_always_true(void) { return true; }
 
-static bool validate_content(void) {
-	bool valid = !STAILQ_EMPTY(&contents);
-	if (!valid) warnx("no content to send.");
-	return valid;
+static bool validate_always_true(void) { return (true); }
+
+static bool validate_content(void)
+{
+    bool valid = !STAILQ_EMPTY(&contents);
+    if (!valid)
+    	warnx("no content to send.");
+    return (valid);
 }
 
-static bool validate_depth(void) {
-	bool valid = creation.exists || creation.depth > 0;
-	if (!valid) warnx("-d maximum queue depth not provided.");
-	return valid;
+static bool validate_depth(void)
+{
+    bool valid = creation.exists || creation.depth > 0;
+    if (!valid)
+    	warnx("-d maximum queue depth not provided.");
+    return (valid);
 }
 
 static bool validate_mode(void) { return creation.mode > 0; }
 
-static bool validate_queue(void) {
-	bool valid = !STAILQ_EMPTY(&queues);
-	if (!valid) warnx("missing -q, or no sane queue name given.");
-	return valid;
+static bool validate_queue(void)
+{
+    bool valid = !STAILQ_EMPTY(&queues);
+    if (!valid)
+    	warnx("missing -q, or no sane queue name given.");
+    return (valid);
 }
 
-static bool validate_single_queue(void) {
-	bool valid = !STAILQ_EMPTY(&queues) && STAILQ_NEXT(STAILQ_FIRST(&queues), links) == NULL;
-	if (!valid) warnx("expected one queue.");
-	return valid;
+static bool validate_single_queue(void)
+{
+    bool valid = !STAILQ_EMPTY(&queues) &&
+        STAILQ_NEXT(STAILQ_FIRST(&queues), links) == NULL;
+    if (!valid)
+    	warnx("expected one queue.");
+    return (valid);
 }
 
-static bool validate_size(void) {
-	bool valid = creation.exists || creation.size > 0;
-	if (!valid) warnx("-s maximum message size not provided.");
-	return valid;
+static bool validate_size(void)
+{
+    bool valid = creation.exists || creation.size > 0;
+    if (!valid)
+    	warnx("-s maximum message size not provided.");
+    return (valid);
 }
 
 /* OPTIONS table handling. */
 
 struct Option {
-	/* points to array of string pointers terminated by a null pointer. */
-	const char **pattern;
-	/* parse argument. */
-	void (*parse)(const char *);
-	/* displays an error and returns false if this parameter is not valid.
-	 * returns true otherwise. */
-	bool (*validate)(void);
+    /* points to array of string pointers terminated by a null pointer. */
+    const char **pattern;
+    /* parse argument. */
+    void (*parse)(const char *);
+    /*
+     * displays an error and returns false if this parameter is not valid.
+     * returns true otherwise.
+     */
+    bool (*validate)(void);
 };
 
-/* parse options by table.
+/*
+ * parse options by table.
  * index - current index into argv list.
  * argc, argv - command line parameters.
- * options - null terminated list of pointers to options. */
-static void parse_options(int index, int argc, const char *argv[], const struct Option **options) {
-	while ( (index + 1) < argc ) {
-		const struct Option **cursor = options;
-		bool match = false;
-		while (*cursor != NULL && !match) {
-			const struct Option * option = cursor[0];
-			const char **pattern = option->pattern;
-			while (*pattern != NULL && !match) {
-				const char *knob = *pattern;
-				match = strcmp(knob, argv[index]) == 0;
-				if (!match) pattern++;
-			}
-			if (match) {
-				option->parse(argv[index + 1]);
-				index += 2;
-				break;
-			}
-			cursor++;
-		}
-		if (!match && index < argc) {
-			warnx("skipping [%s].", argv[index]);
-			index++;
-		}
-	}
-	if (index < argc) {
-		warnx("skipping [%s].", argv[index]);
-	}
+ * options - null terminated list of pointers to options.
+ */
+static void parse_options(int index, int argc, const char *argv[],
+                          const struct Option **options)
+{
+    while ((index + 1) < argc) {
+        const struct Option **cursor = options;
+        bool match = false;
+        while (*cursor != NULL && !match) {
+            const struct Option *option = cursor[0];
+            const char **pattern = option->pattern;
+            while (*pattern != NULL && !match) {
+                const char *knob = *pattern;
+                match = strcmp(knob, argv[index]) == 0;
+                if (!match)
+                	pattern++;
+            }
+
+            if (match) {
+                option->parse(argv[index + 1]);
+                index += 2;
+                break;
+            }
+            cursor++;
+        }
+
+        if (!match && index < argc) {
+            warnx("skipping [%s].", argv[index]);
+            index++;
+        }
+    }
+
+    if (index < argc) {
+        warnx("skipping [%s].", argv[index]);
+    }
 }
 
 /* options - null terminated list of pointers to options. */
-static bool validate_options(const struct Option **options) {
-	bool valid = true;
-	while (*options != NULL) {
-		const struct Option *option = options[0];
-		if (!option->validate())
-			valid = false;
-		options++;
-	}
-	return valid;
+static bool validate_options(const struct Option **options)
+{
+    bool valid = true;
+    while (*options != NULL) {
+        const struct Option *option = options[0];
+        if (!option->validate())
+            valid = false;
+        options++;
+    }
+    return (valid);
 }
 
 /* SUBCOMMANDS */
 
-/* queue: name of queue to be created.
- * q_creation: creation parameters (copied by value). */
-static int create(const char *queue, struct Creation q_creation) {
-	int flags = O_RDWR;
-	struct mq_attr stuff = {0, q_creation.depth, q_creation.size, 0, {0}};
-	if (!q_creation.block) {
-		flags |= O_NONBLOCK;
-		stuff.mq_flags |= O_NONBLOCK;
-	}
-	mqd_t handle = mq_open(queue, flags);
-	q_creation.exists = handle != fail;
-	if (!q_creation.exists) {
-		/* apply size and depth checks here.
-		 * if queue exists, we can default to existing depth and size.
-		 * but for a new queue, we require that input. */
-		if (validate_size() && validate_depth()) {
-			/* no need to re-apply mode. */
-			q_creation.set_mode = false;
-			flags |= O_CREAT;
-			handle = mq_open(queue, flags, q_creation.mode, &stuff);
-		}
-	}
-	if (handle == fail) {
-		errno_t what = errno;
-		warnc(what, "mq_open(create)");
-		return what;
-	}
-	
-#if __BSD_VISIBLE
-	/* undocumented. See https://bugs.freebsd.org/bugzilla//show_bug.cgi?id=273230 */
-	int fd = mq_getfd_np(handle);
-	if (fd < 0) {
-		errno_t what = errno;
-		warnc(what, "mq_getfd_np(create)");
-		mq_close(handle);
-		return what;
-	}
-	struct stat status = {0};
-	int result = fstat(fd, &status);
-	if (result != 0) {
-		errno_t what = errno;
-		warnc(what, "fstat(create)");
-		mq_close(handle);
-		return what;
-	}
-	/* do this only if group and / or user given. */
-	if (q_creation.set_group || q_creation.set_user) {
-		q_creation.user = q_creation.set_user ? q_creation.user : status.st_uid;
-		q_creation.group = q_creation.set_group ? q_creation.group : status.st_gid;
-		result = fchown(fd, q_creation.user, q_creation.group);
-		if (result != 0) {
-			errno_t what = errno;
-			warnc(what, "fchown(create)");
-			mq_close(handle);
-			return what;
-		}
-	}
-	/* do this only if altering mode of an existing queue. */
-	if (q_creation.exists && q_creation.set_mode && q_creation.mode != (status.st_mode & 0x06777)) {
-		result = fchmod(fd, q_creation.mode);
-		if (result != 0) {
-			errno_t what = errno;
-			warnc(what, "fchmod(create)");
-			mq_close(handle);
-			return what;
-		}
-	}
-#endif /* __BSD_VISIBLE */
-	
-	return mq_close(handle);
+/*
+ * queue: name of queue to be created.
+ * q_creation: creation parameters (copied by value).
+ */
+static int create(const char *queue, struct Creation q_creation)
+{
+    int flags = O_RDWR;
+    struct mq_attr stuff = {0, q_creation.depth, q_creation.size, 0, {0} };
+
+    if (!q_creation.block) {
+        flags |= O_NONBLOCK;
+        stuff.mq_flags |= O_NONBLOCK;
+    }
+
+    mqd_t handle = mq_open(queue, flags);
+    q_creation.exists = handle != fail;
+    if (!q_creation.exists) {
+        /*
+         * apply size and depth checks here.
+         * if queue exists, we can default to existing depth and size.
+         * but for a new queue, we require that input.
+         */
+        if (validate_size() && validate_depth()) {
+            /* no need to re-apply mode. */
+            q_creation.set_mode = false;
+            flags |= O_CREAT;
+            handle = mq_open(queue, flags, q_creation.mode, &stuff);
+        }
+    }
+
+    if (handle == fail) {
+        errno_t what = errno;
+        warnc(what, "mq_open(create)");
+        return (what);
+    }
+
+#ifdef __FreeBSD__
+    /*
+     * undocumented.
+     * See https://bugs.freebsd.org/bugzilla//show_bug.cgi?id=273230
+     */
+    int fd = mq_getfd_np(handle);
+    if (fd < 0) {
+        errno_t what = errno;
+        warnc(what, "mq_getfd_np(create)");
+        mq_close(handle);
+        return (what);
+    }
+    struct stat status = {0};
+    int result = fstat(fd, &status);
+    if (result != 0) {
+        errno_t what = errno;
+        warnc(what, "fstat(create)");
+        mq_close(handle);
+        return (what);
+    }
+
+    /* do this only if group and / or user given. */
+    if (q_creation.set_group || q_creation.set_user) {
+        q_creation.user =
+	        q_creation.set_user ? q_creation.user : status.st_uid;
+        q_creation.group =
+	        q_creation.set_group ? q_creation.group : status.st_gid;
+        result = fchown(fd, q_creation.user, q_creation.group);
+        if (result != 0) {
+            errno_t what = errno;
+            warnc(what, "fchown(create)");
+            mq_close(handle);
+            return (what);
+        }
+    }
+
+    /* do this only if altering mode of an existing queue. */
+    if (q_creation.exists && q_creation.set_mode &&
+        q_creation.mode != (status.st_mode & 0x06777)) {
+        result = fchmod(fd, q_creation.mode);
+        if (result != 0) {
+            errno_t what = errno;
+            warnc(what, "fchmod(create)");
+            mq_close(handle);
+            return (what);
+        }
+    }
+#endif /* __FreeBSD__ */
+
+    return (mq_close(handle));
 }
 
 /* queue: name of queue to be removed. */
-static int rm(const char *queue) {
-	int result = mq_unlink(queue);
-	if (result != 0) {
-		errno_t what = errno;
-		warnc(what, "mq_unlink");
-		return what;
-	}
-	return result;
+static int rm(const char *queue)
+{
+    int result = mq_unlink(queue);
+    if (result != 0) {
+        errno_t what = errno;
+        warnc(what, "mq_unlink");
+        return (what);
+    }
+
+    return (result);
 }
 
 /* queue: name of queue to be inspected. */
-static int info(const char *queue) {
-	mqd_t handle = mq_open(queue, O_RDONLY);
-	if (handle == fail) {
-		errno_t what = errno;
-		warnc(what, "mq_open(info)");
-		return what;
-	}
-	struct mq_attr actual = {0, 0, 0, 0, {0}};
-	int result = mq_getattr(handle, &actual);
-	if (result != 0) {
-		errno_t what = errno;
-		warnc(what, "mq_getattr(info)");
-		return what;
-	}
-	fprintf(stdout, "queue: '%s'\nQSIZE: %lu\nMSGSIZE: %ld\nMAXMSG: %ld\nCURMSG: %ld\nflags: %03ld\n",
-		queue, actual.mq_msgsize * actual.mq_curmsgs, actual.mq_msgsize, actual.mq_maxmsg, actual.mq_curmsgs, actual.mq_flags);
-#if __BSD_VISIBLE
-	int fd = mq_getfd_np(handle);
-	struct stat status = {0};
-	result = fstat(fd, &status);
-	if (result != 0) {
-		warn("fstat(info)");
-	}
-	else {
-		fprintf(stdout, "UID: %u\nGID: %u\nMODE: %03o\n", status.st_uid, status.st_gid, status.st_mode);
-	}
-#endif /* __BSD_VISIBLE */
-	return mq_close(handle);
+static int info(const char *queue)
+{
+    mqd_t handle = mq_open(queue, O_RDONLY);
+    if (handle == fail) {
+        errno_t what = errno;
+        warnc(what, "mq_open(info)");
+        return (what);
+    }
+
+    struct mq_attr actual = {0, 0, 0, 0, {0} };
+    int result = mq_getattr(handle, &actual);
+    if (result != 0) {
+        errno_t what = errno;
+        warnc(what, "mq_getattr(info)");
+        return (what);
+    }
+
+    fprintf(stdout,
+        "queue: '%s'\nQSIZE: %lu\nMSGSIZE: %ld\nMAXMSG: %ld\n"
+        "CURMSG: %ld\nflags: %03ld\n",
+        queue, actual.mq_msgsize * actual.mq_curmsgs, actual.mq_msgsize,
+        actual.mq_maxmsg, actual.mq_curmsgs, actual.mq_flags);
+#ifdef __FreeBSD__
+    int fd = mq_getfd_np(handle);
+    struct stat status = {0};
+    result = fstat(fd, &status);
+    if (result != 0) {
+        warn("fstat(info)");
+    } else {
+        fprintf(stdout, "UID: %u\nGID: %u\nMODE: %03o\n",
+                status.st_uid, status.st_gid, status.st_mode);
+    }
+#endif /* __FreeBSD__ */
+
+    return (mq_close(handle));
 }
 
 /* queue: name of queue to drain one message. */
-static int recv(const char *queue) {
-	mqd_t handle = mq_open(queue, O_RDONLY);
-	if (handle == fail) {
-		errno_t what = errno;
-		warnc(what, "mq_open(recv)");
-		return what;
-	}
-	struct mq_attr actual = {0, 0, 0, 0, {0}};
-	int result = mq_getattr(handle, &actual);
-	if (result != 0) {
-		errno_t what = errno;
-		warnc(what, "mq_attr(recv)");
-		mq_close(handle);
-		return what;
-	}
-	char *text = (char *)malloc(actual.mq_msgsize + 1);
-	memset(text, 0, actual.mq_msgsize + 1);
-	unsigned q_priority = 0;
-	result = mq_receive(handle, text, actual.mq_msgsize, &q_priority);
-	if (result < 0) {
-		errno_t what = errno;
-		warnc(what, "mq_receive");
-		mq_close(handle);
-		return what;
-	}
+static int recv(const char *queue)
+{
+    mqd_t handle = mq_open(queue, O_RDONLY);
+    if (handle == fail) {
+        errno_t what = errno;
+        warnc(what, "mq_open(recv)");
+        return (what);
+    }
 
-	fprintf(stdout, "[%u]: %-*.*s\n", q_priority, result, result, text);
-	
-	return mq_close(handle);
+    struct mq_attr actual = {0, 0, 0, 0, {0} };
+
+    int result = mq_getattr(handle, &actual);
+    if (result != 0) {
+        errno_t what = errno;
+        warnc(what, "mq_attr(recv)");
+        mq_close(handle);
+        return (what);
+    }
+
+    char *text = (char *)malloc(actual.mq_msgsize + 1);
+    memset(text, 0, actual.mq_msgsize + 1);
+    unsigned q_priority = 0;
+    result = mq_receive(handle, text, actual.mq_msgsize, &q_priority);
+    if (result < 0) {
+        errno_t what = errno;
+        warnc(what, "mq_receive");
+        mq_close(handle);
+        return (what);
+    }
+
+    fprintf(stdout, "[%u]: %-*.*s\n", q_priority, result, result, text);
+    return (mq_close(handle));
 }
 
-/* queue: name of queue to send one message.
+/*
+ * queue: name of queue to send one message.
  * text: message text.
- * q_priority: message priority in range of 0 to 63. */
-static int send(const char *queue, const char *text, unsigned q_priority) {
-	mqd_t handle = mq_open(queue, O_WRONLY);
-	if (handle == fail) {
-		errno_t what = errno;
-		warnc(what, "mq_open(send)");
-		return what;
-	}
-	struct mq_attr actual = {0, 0, 0, 0, {0}};
-	int result = mq_getattr(handle, &actual);
-	if (result != 0) {
-		errno_t what = errno;
-		warnc(what, "mq_attr(send)");
-		mq_close(handle);
-		return what;
-	}
-	int size = strlen(text);
-	if (size > actual.mq_msgsize) {
-		warnx("truncating message to %ld characters.\n", actual.mq_msgsize);
-		size = actual.mq_msgsize;
-	}
-	
-	result = mq_send(handle, text, size, q_priority);
-	if (result != 0) {
-		errno_t what = errno;
-		warnc(what, "mq_send");
-		mq_close(handle);
-		return what;
-	}
-	return mq_close(handle);
+ * q_priority: message priority in range of 0 to 63.
+ */
+static int send(const char *queue, const char *text,
+                unsigned q_priority)
+{
+    mqd_t handle = mq_open(queue, O_WRONLY);
+    if (handle == fail) {
+        errno_t what = errno;
+        warnc(what, "mq_open(send)");
+        return (what);
+    }
+
+    struct mq_attr actual = {0, 0, 0, 0, {0} };
+
+    int result = mq_getattr(handle, &actual);
+    if (result != 0) {
+        errno_t what = errno;
+        warnc(what, "mq_attr(send)");
+        mq_close(handle);
+        return (what);
+    }
+
+    int size = strlen(text);
+    if (size > actual.mq_msgsize) {
+        warnx("truncating message to %ld characters.\n", actual.mq_msgsize);
+        size = actual.mq_msgsize;
+    }
+
+    result = mq_send(handle, text, size, q_priority);
+    if (result != 0) {
+        errno_t what = errno;
+        warnc(what, "mq_send");
+        mq_close(handle);
+        return (what);
+    }
+
+    return (mq_close(handle));
 }
 
-static void usage(FILE *file) {
-	fprintf(file,
-	    "usage:\n\tposixmqcontrol [rm|info|recv] -q <queue>\n"
-	    "\tposixmqcontrol create -q <queue> -s <maxsize> -d <maxdepth> [ -m <mode> ] [ -b <block> ] [-u <uid> ] [ -g <gid> ]\n"
-	    "\tposixmqcontrol send -q <queue> -c <content> [-p <priority> ]\n");
+static void usage(FILE *file)
+{
+    fprintf(file,
+        "usage:\n\tposixmqcontrol [rm|info|recv] -q <queue>\n"
+        "\tposixmqcontrol create -q <queue> -s <maxsize> -d <maxdepth> "
+        "[ -m <mode> ] [ -b <block> ] [-u <uid> ] [ -g <gid> ]\n"
+        "\tposixmqcontrol send -q <queue> -c <content> "
+        "[-p <priority> ]\n");
 }
 
 /* end of SUBCOMMANDS */
 
-#define _countof(arg) ( (sizeof(arg)) / (sizeof((arg)[0]) ) )
+#define _countof(arg) ((sizeof(arg)) / (sizeof((arg)[0])))
 
 /* convert an errno style error code to a sysexits code. */
-static int grace(int err_number) {
-	static const int xlat[][2] = {
-		/* generally means the mqueuefs driver is not loaded. */
-		{ENOSYS, EX_UNAVAILABLE},
-		/* no such queue name. */
-		{ENOENT, EX_OSFILE},
-		{EIO, EX_IOERR},
-		{ENODEV, EX_IOERR},
-		{ENOTSUP, EX_TEMPFAIL},
-		{EAGAIN, EX_IOERR},
-		{EPERM, EX_NOPERM},
-		{EACCES, EX_NOPERM},
-		{0, EX_OK}
-	};
-	for (unsigned i = 0; i < _countof(xlat); i++) {
-		if (xlat[i][0] == err_number)
-			return xlat[i][1];
-	}
-	return EX_OSERR;	
+static int grace(int err_number)
+{
+    static const int xlat[][2] = {
+        /* generally means the mqueuefs driver is not loaded. */
+        {ENOSYS, EX_UNAVAILABLE},
+        /* no such queue name. */
+        {ENOENT, EX_OSFILE},
+        {EIO, EX_IOERR},
+        {ENODEV, EX_IOERR},
+        {ENOTSUP, EX_TEMPFAIL},
+        {EAGAIN, EX_IOERR},
+        {EPERM, EX_NOPERM},
+        {EACCES, EX_NOPERM},
+        {0, EX_OK}
+    };
+
+    for (unsigned i = 0; i < _countof(xlat); i++) {
+        if (xlat[i][0] == err_number)
+            return (xlat[i][1]);
+    }
+
+    return (EX_OSERR);
 }
 
 /* OPTIONS tables */
 
 /* careful: these 'names' arrays must be terminated by a null pointer. */
 static const char *names_queue[] = {"-q", "--queue", "-t", "--topic", NULL};
-static const struct Option option_queue = {names_queue, parse_queue, validate_queue};
-static const struct Option option_single_queue = {names_queue, parse_single_queue, validate_single_queue};
+static const struct Option option_queue = {
+    names_queue, parse_queue, validate_queue};
+static const struct Option option_single_queue = {
+    names_queue, parse_single_queue, validate_single_queue};
 static const char *names_depth[] = {"-d", "--depth", "--maxmsg", NULL};
-static const struct Option option_depth = {names_depth, parse_depth, validate_always_true};
+static const struct Option option_depth = {
+    names_depth, parse_depth, validate_always_true};
 static const char *names_size[] = {"-s", "--size", "--msgsize", NULL};
-static const struct Option option_size = {names_size, parse_size, validate_always_true};
+static const struct Option option_size = {
+    names_size, parse_size, validate_always_true};
 static const char *names_block[] = {"-b", "--block", NULL};
-static const struct Option option_block = {names_block, parse_block, validate_always_true};
-static const char *names_content[] = {"-c", "--content", "--data", "--message", NULL};
-static const struct Option option_content = {names_content, parse_content, validate_content};
+static const struct Option option_block = {
+    names_block, parse_block, validate_always_true};
+static const char *names_content[] = {
+    "-c", "--content", "--data", "--message", NULL};
+static const struct Option option_content = {
+    names_content, parse_content, validate_content};
 static const char *names_priority[] = {"-p", "--priority", NULL};
-static const struct Option option_priority = {names_priority, parse_priority, validate_always_true};
+static const struct Option option_priority = {names_priority,
+    parse_priority, validate_always_true};
 static const char *names_mode[] = {"-m", "--mode", NULL};
-static const struct Option option_mode = {names_mode, parse_mode, validate_mode};
+static const struct Option option_mode = {
+    names_mode, parse_mode, validate_mode};
 static const char *names_group[] = {"-g", "--gid", NULL};
-static const struct Option option_group = {names_group, parse_group, validate_always_true};
+static const struct Option option_group = {
+    names_group, parse_group, validate_always_true};
 static const char *names_user[] = {"-u", "--uid", NULL};
-static const struct Option option_user = {names_user, parse_user, validate_always_true};
+static const struct Option option_user = {
+    names_user, parse_user, validate_always_true};
 
 /* careful: these arrays must be terminated by a null pointer. */
-#if __BSD_VISIBLE
-static const struct Option *create_options[] = {&option_queue, &option_depth, &option_size, &option_block, &option_mode, &option_group, &option_user, NULL};
-#else  /* !__BSD_VISIBLE */
-static const struct Option *create_options[] = {&option_queue, &option_depth, &option_size, &option_block, &option_mode, NULL};
-#endif /* __BSD_VISIBLE */
+#ifdef __FreeBSD__
+static const struct Option *create_options[] = {
+    &option_queue, &option_depth, &option_size, &option_block, &option_mode,
+    &option_group, &option_user, NULL};
+#else  /* !__FreeBSD__ */
+static const struct Option *create_options[] = {
+    &option_queue, &option_depth, &option_size, &option_block,
+    &option_mode, NULL};
+#endif /* __FreeBSD__ */
 static const struct Option *info_options[] = {&option_queue, NULL};
 static const struct Option *unlink_options[] = {&option_queue, NULL};
 static const struct Option *recv_options[] = {&option_single_queue, NULL};
-static const struct Option *send_options[] = {&option_queue, &option_content, &option_priority, NULL};
+static const struct Option *send_options[] = {
+    &option_queue, &option_content, &option_priority, NULL};
 
-/* 12 mode bits ugsrwxrwxrwx
+/*
+ * 12 mode bits ugsrwxrwxrwx
  * g = GID
  * u = UID
  * s = sticky bit (ignored)
  * three rwx fields for owner, group, and world.
  * r = read
  * w = write
- * x = execute */
+ * x = execute
+ */
 
-int main(int argc, const char *argv[]) {
+int main(int argc, const char *argv[])
+{
     STAILQ_INIT(&queues);
     STAILQ_INIT(&contents);
 
-	if (argc > 1) {
-		const char *verb = argv[1];
-		int index = 2;
+    if (argc > 1) {
+        const char *verb = argv[1];
+        int index = 2;
 
-		if ( strcmp("create", verb) == 0 || strcmp("attr", verb) == 0 ) {
-			parse_options(index, argc, argv, create_options);
-			if ( validate_options(create_options) ) {
-				int worst = 0;
-				struct element *it;
-				STAILQ_FOREACH(it, &queues, links) {
-					const char *queue = it->text;
-					int result = create(queue, creation);
-					if (result != 0)
-						worst = result;
-				}
-				return grace(worst);
-			}
-			return EX_USAGE;
-		}
-		else if ( strcmp("info", verb) == 0 || strcmp("cat", verb) == 0 ) {
-			parse_options(index, argc, argv, info_options);
-			if ( validate_options(info_options) ) {
-				int worst = 0;
-				struct element *it;
-				STAILQ_FOREACH(it, &queues, links) {
-					const char *queue = it->text;
-					int result = info(queue);
-					if (result != 0)
-						worst = result;
-				}
-				return grace(worst);
-			}
-			return EX_USAGE;
-		}
-		if ( strcmp("send", verb) == 0 ) {
-			parse_options(index, argc, argv, send_options);
-			if ( validate_options(send_options) ) {
-				int worst = 0;
-				struct element *itq;
-				STAILQ_FOREACH(itq, &queues, links) {
-					const char *queue = itq->text;
-					struct element *itc;
-					STAILQ_FOREACH(itc, &contents, links) {
-						const char *content = itc->text;
-						int result = send(queue, content, priority);
-						if (result != 0)
-							worst = result;
-					}
-				}
-				return grace(worst);
-			}
-			return EX_USAGE;
-		}
-		else if ( strcmp("recv", verb) == 0 || strcmp("receive", verb) == 0 ) {
-			parse_options(index, argc, argv, recv_options);
-			if ( validate_options(recv_options) ) {
-				const char *queue = STAILQ_FIRST(&queues)->text;				
-				int worst = recv(queue);
-				return grace(worst);				
-			}
-			return EX_USAGE;
-		}
-		else if ( strcmp("unlink", verb) == 0 || strcmp("rm", verb) == 0 ) {
-			parse_options(index, argc, argv, unlink_options);
-			if ( validate_options(unlink_options) ) {
-				int worst = 0;
-				struct element *it;
-				STAILQ_FOREACH(it, &queues, links)
-				{
-					const char *queue = it->text;
-					int result = rm(queue);
-					if (result != 0)
-						worst = result;
-				}
-				return grace(worst);
-			}
-			return EX_USAGE;
-		}
-		else if (strcmp("help", verb) == 0 ) {
-			usage(stdout);
-			return 0;
-		}
-		else {
-			warnx("Unknown verb [%s]", verb);
-			return EX_USAGE;
-		}
-	}
+        if (strcmp("create", verb) == 0 || strcmp("attr", verb) == 0) {
+            parse_options(index, argc, argv, create_options);
+            if (validate_options(create_options)) {
+                int worst = 0;
+                struct element *it;
+                STAILQ_FOREACH(it, &queues, links) {
+                    const char *queue = it->text;
+                    int result = create(queue, creation);
+                    if (result != 0)
+                        worst = result;
+                }
 
-	usage(stdout);
-	return 0;
+                return (grace(worst));
+            }
+
+            return (EX_USAGE);
+        } else if (strcmp("info", verb) == 0 || strcmp("cat", verb) == 0) {
+            parse_options(index, argc, argv, info_options);
+            if (validate_options(info_options)) {
+                int worst = 0;
+                struct element *it;
+                STAILQ_FOREACH(it, &queues, links) {
+                    const char *queue = it->text;
+                    int result = info(queue);
+                    if (result != 0)
+                        worst = result;
+                }
+
+                return (grace(worst));
+            }
+
+            return (EX_USAGE);
+        } else if (strcmp("send", verb) == 0) {
+            parse_options(index, argc, argv, send_options);
+            if (validate_options(send_options)) {
+                int worst = 0;
+                struct element *itq;
+                STAILQ_FOREACH(itq, &queues, links) {
+                    const char *queue = itq->text;
+                    struct element *itc;
+                    STAILQ_FOREACH(itc, &contents, links) {
+                        const char *content = itc->text;
+                        int result = send(queue, content, priority);
+                        if (result != 0)
+                            worst = result;
+                    }
+                }
+
+                return (grace(worst));
+            }
+            return (EX_USAGE);
+        } else if (strcmp("recv", verb) == 0 ||
+                 strcmp("receive", verb) == 0) {
+            parse_options(index, argc, argv, recv_options);
+            if (validate_options(recv_options)) {
+                const char *queue = STAILQ_FIRST(&queues)->text;
+                int worst = recv(queue);
+                return (grace(worst));
+            }
+
+            return (EX_USAGE);
+        } else if (strcmp("unlink", verb) == 0 ||
+                   strcmp("rm", verb) == 0) {
+            parse_options(index, argc, argv, unlink_options);
+            if (validate_options(unlink_options)) {
+                int worst = 0;
+                struct element *it;
+                STAILQ_FOREACH(it, &queues, links) {
+                    const char *queue = it->text;
+                    int result = rm(queue);
+                    if (result != 0)
+                        worst = result;
+                }
+
+                return (grace(worst));
+            }
+
+            return (EX_USAGE);
+        } else if (strcmp("help", verb) == 0) {
+            usage(stdout);
+            return (0);
+        } else {
+            warnx("Unknown verb [%s]", verb);
+            return (EX_USAGE);
+        }
+    }
+
+    usage(stdout);
+    return (0);
 }
