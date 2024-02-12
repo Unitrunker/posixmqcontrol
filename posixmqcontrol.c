@@ -70,9 +70,12 @@ struct element {
 };
 
 static struct element *
-malloc_element(void)
+malloc_element(const char *context)
 {
-	return malloc(sizeof(struct element));
+	struct element *item = malloc(sizeof(struct element));
+	if (item == NULL)
+		err(1, "malloc(%s)", context);
+	return item;
 }
 
 static STAILQ_HEAD(tqh, element)
@@ -97,12 +100,11 @@ static const mqd_t fail = (mqd_t)-1;
 /* OPTIONS parsing utilitarian */
 
 static void
-parse_long(const char *text,
-	long *capture, const char *knob, const char *name)
+parse_long(const char *text, long *capture, const char *knob, const char *name)
 {
 	char *cursor = NULL;
 	long value = strtol(text, &cursor, 10);
-	
+
 	if (cursor > text) {
 		*capture = value;
 	} else {
@@ -141,7 +143,7 @@ sane_queue(const char *text)
 	while (*queue != 0 && size < NAME_MAX) {
 		if (*queue == '/') {
 			warnx("queue name [%-.*s] - only one '/' permitted.",
-				NAME_MAX, text);
+			    NAME_MAX, text);
 			return (false);
 		}
 		queue++;
@@ -150,7 +152,7 @@ sane_queue(const char *text)
 
 	if (size == NAME_MAX && *queue) {
 		warnx("queue name [%-.*s...] may not be longer than %d.",
-			NAME_MAX, text, NAME_MAX);
+		    NAME_MAX, text, NAME_MAX);
 		return (false);
 	}
 	return (true);
@@ -179,7 +181,7 @@ parse_block(const char *text)
 static void
 parse_content(const char *content)
 {
-	struct element *n1 = malloc_element();
+	struct element *n1 = malloc_element("content");
 
 	n1->text = content;
 	STAILQ_INSERT_TAIL(&contents, n1, links);
@@ -197,8 +199,8 @@ parse_group(const char *text)
 	struct group *entry = getgrnam(text);
 
 	if (entry == NULL) {
-		parse_unsigned(text, &creation.set_group, &creation.group,
-					   "-g", "group");
+		parse_unsigned(text, &creation.set_group,
+		    &creation.group, "-g", "group");
 	} else {
 		creation.set_group = true;
 		creation.group = entry->gr_gid;
@@ -231,7 +233,6 @@ parse_priority(const char *text)
 		} else {
 			warnx("bad -p priority range [%s] ignored.", text);
 		}
-
 	} else {
 		warnx("bad -p priority format [%s] ignored.", text);
 	}
@@ -241,7 +242,8 @@ static void
 parse_queue(const char *queue)
 {
 	if (sane_queue(queue)) {
-		struct element *n1 = malloc_element();
+		struct element *n1 = malloc_element("queue name");
+
 		n1->text = queue;
 		STAILQ_INSERT_TAIL(&queues, n1, links);
 	}
@@ -252,7 +254,8 @@ parse_single_queue(const char *queue)
 {
 	if (sane_queue(queue)) {
 		if (STAILQ_EMPTY(&queues)) {
-			struct element *n1 = malloc_element();
+			struct element *n1 = malloc_element("queue name");
+
 			n1->text = queue;
 			STAILQ_INSERT_TAIL(&queues, n1, links);
 		} else
@@ -271,8 +274,8 @@ parse_user(const char *text)
 {
 	struct passwd *entry = getpwnam(text);
 	if (entry == NULL) {
-		parse_unsigned(text, &creation.set_user, &creation.user,
-					   "-u", "user");
+		parse_unsigned(text, &creation.set_user,
+		    &creation.user, "-u", "user");
 	} else {
 		creation.set_user = true;
 		creation.user = entry->pw_uid;
@@ -321,7 +324,7 @@ static bool
 validate_single_queue(void)
 {
 	bool valid = !STAILQ_EMPTY(&queues) &&
-		STAILQ_NEXT(STAILQ_FIRST(&queues), links) == NULL;
+	    STAILQ_NEXT(STAILQ_FIRST(&queues), links) == NULL;
 
 	if (!valid)
 		warnx("expected one queue.");
@@ -360,7 +363,7 @@ struct Option {
  */
 static void
 parse_options(int index, int argc,
-	const char *argv[], const struct Option **options)
+    const char *argv[], const struct Option **options)
 {
 	while ((index + 1) < argc) {
 		const struct Option **cursor = options;
@@ -422,7 +425,12 @@ static int
 create(const char *queue, struct Creation q_creation)
 {
 	int flags = O_RDWR;
-	struct mq_attr stuff = {0, q_creation.depth, q_creation.size, 0, {0} };
+	struct mq_attr stuff = {
+		.mq_curmsgs = 0,
+		.mq_maxmsg = q_creation.depth,
+		.mq_msgsize = q_creation.size,
+		.mq_flags = 0
+	};
 
 	if (!q_creation.block) {
 		flags |= O_NONBLOCK;
@@ -447,6 +455,7 @@ create(const char *queue, struct Creation q_creation)
 
 	if (handle == fail) {
 		errno_t what = errno;
+
 		warnc(what, "mq_open(create)");
 		return (what);
 	}
@@ -460,6 +469,7 @@ create(const char *queue, struct Creation q_creation)
 
 	if (fd < 0) {
 		errno_t what = errno;
+
 		warnc(what, "mq_getfd_np(create)");
 		mq_close(handle);
 		return (what);
@@ -468,6 +478,7 @@ create(const char *queue, struct Creation q_creation)
 	int result = fstat(fd, &status);
 	if (result != 0) {
 		errno_t what = errno;
+
 		warnc(what, "fstat(create)");
 		mq_close(handle);
 		return (what);
@@ -476,12 +487,13 @@ create(const char *queue, struct Creation q_creation)
 	/* do this only if group and / or user given. */
 	if (q_creation.set_group || q_creation.set_user) {
 		q_creation.user =
-			q_creation.set_user ? q_creation.user : status.st_uid;
+		    q_creation.set_user ? q_creation.user : status.st_uid;
 		q_creation.group =
-			q_creation.set_group ? q_creation.group : status.st_gid;
+		    q_creation.set_group ? q_creation.group : status.st_gid;
 		result = fchown(fd, q_creation.user, q_creation.group);
 		if (result != 0) {
 			errno_t what = errno;
+
 			warnc(what, "fchown(create)");
 			mq_close(handle);
 			return (what);
@@ -490,10 +502,11 @@ create(const char *queue, struct Creation q_creation)
 
 	/* do this only if altering mode of an existing queue. */
 	if (q_creation.exists && q_creation.set_mode &&
-		q_creation.mode != (status.st_mode & 0x06777)) {
+	    q_creation.mode != (status.st_mode & 0x06777)) {
 		result = fchmod(fd, q_creation.mode);
 		if (result != 0) {
 			errno_t what = errno;
+
 			warnc(what, "fchmod(create)");
 			mq_close(handle);
 			return (what);
@@ -512,6 +525,7 @@ rm(const char *queue)
 
 	if (result != 0) {
 		errno_t what = errno;
+
 		warnc(what, "mq_unlink");
 		return (what);
 	}
@@ -547,46 +561,49 @@ info(const char *queue)
 
 	if (handle == fail) {
 		errno_t what = errno;
+
 		warnc(what, "mq_open(info)");
 		return (what);
 	}
 
-	struct mq_attr actual = {0, 0, 0, 0, {0} };
+	struct mq_attr actual;
 
 	int result = mq_getattr(handle, &actual);
 	if (result != 0) {
 		errno_t what = errno;
+
 		warnc(what, "mq_getattr(info)");
 		return (what);
 	}
 
 	fprintf(stdout,
-		"queue: '%s'\nQSIZE: %lu\nMSGSIZE: %ld\nMAXMSG: %ld\n"
-		"CURMSG: %ld\nflags: %03ld\n",
-		queue, actual.mq_msgsize * actual.mq_curmsgs, actual.mq_msgsize,
-		actual.mq_maxmsg, actual.mq_curmsgs, actual.mq_flags);
+	    "queue: '%s'\nQSIZE: %lu\nMSGSIZE: %ld\nMAXMSG: %ld\n"
+	    "CURMSG: %ld\nflags: %03ld\n",
+	    queue, actual.mq_msgsize * actual.mq_curmsgs, actual.mq_msgsize,
+	    actual.mq_maxmsg, actual.mq_curmsgs, actual.mq_flags);
 #ifdef __FreeBSD__
 
 	int fd = mq_getfd_np(handle);
-	struct stat status = {0};
+	struct stat status;
 
 	result = fstat(fd, &status);
 	if (result != 0) {
 		warn("fstat(info)");
 	} else {
-		fprintf(stdout, "UID: %u\nGID: %u\n", status.st_uid, status.st_gid);
 		mode_t mode = status.st_mode;
+
+		fprintf(stdout, "UID: %u\nGID: %u\n", status.st_uid, status.st_gid);
 		fprintf(stdout, "MODE: %c%c%c%c%c%c%c%c%c%c\n",
-			dual(mode & 01000, 's'),
-			dual(mode & 00400, 'r'),
-			dual(mode & 00200, 'w'),
-			quad(mode & 00100, mode & 04000),
-			dual(mode & 00040, 'r'),
-			dual(mode & 00020, 'w'),
-			quad(mode & 00010, mode & 02000),
-			dual(mode & 00004, 'r'),
-			dual(mode & 00002, 'w'),
-			dual(mode & 00001, 'x'));
+            dual(mode & 01000, 's'),
+		    dual(mode & 00400, 'r'),
+		    dual(mode & 00200, 'w'),
+		    quad(mode & 00100, mode & 04000),
+		    dual(mode & 00040, 'r'),
+		    dual(mode & 00020, 'w'),
+		    quad(mode & 00010, mode & 02000),
+		    dual(mode & 00004, 'r'),
+		    dual(mode & 00002, 'w'),
+		    dual(mode & 00001, 'x'));
 	}
 #endif /* __FreeBSD__ */
 
@@ -601,16 +618,18 @@ recv(const char *queue)
 
 	if (handle == fail) {
 		errno_t what = errno;
+
 		warnc(what, "mq_open(recv)");
 		return (what);
 	}
 
-	struct mq_attr actual = {0, 0, 0, 0, {0} };
+	struct mq_attr actual;
 
 	int result = mq_getattr(handle, &actual);
 
 	if (result != 0) {
 		errno_t what = errno;
+
 		warnc(what, "mq_attr(recv)");
 		mq_close(handle);
 		return (what);
@@ -623,6 +642,7 @@ recv(const char *queue)
 	result = mq_receive(handle, text, actual.mq_msgsize, &q_priority);
 	if (result < 0) {
 		errno_t what = errno;
+
 		warnc(what, "mq_receive");
 		mq_close(handle);
 		return (what);
@@ -638,23 +658,24 @@ recv(const char *queue)
  * q_priority: message priority in range of 0 to 63.
  */
 static int
-send(const char *queue, const char *text,
-	unsigned q_priority)
+send(const char *queue, const char *text, unsigned q_priority)
 {
 	mqd_t handle = mq_open(queue, O_WRONLY);
 
 	if (handle == fail) {
 		errno_t what = errno;
+
 		warnc(what, "mq_open(send)");
 		return (what);
 	}
 
-	struct mq_attr actual = {0, 0, 0, 0, {0} };
+	struct mq_attr actual;
 
 	int result = mq_getattr(handle, &actual);
 
 	if (result != 0) {
 		errno_t what = errno;
+
 		warnc(what, "mq_attr(send)");
 		mq_close(handle);
 		return (what);
@@ -671,6 +692,7 @@ send(const char *queue, const char *text,
 
 	if (result != 0) {
 		errno_t what = errno;
+
 		warnc(what, "mq_send");
 		mq_close(handle);
 		return (what);
@@ -683,11 +705,11 @@ static void
 usage(FILE *file)
 {
 	fprintf(file,
-		"usage:\n\tposixmqcontrol [rm|info|recv] -q <queue>\n"
-		"\tposixmqcontrol create -q <queue> -s <maxsize> -d <maxdepth> "
-		"[ -m <mode> ] [ -b <block> ] [-u <uid> ] [ -g <gid> ]\n"
-		"\tposixmqcontrol send -q <queue> -c <content> "
-		"[-p <priority> ]\n");
+	    "usage:\n\tposixmqcontrol [rm|info|recv] -q <queue>\n"
+	    "\tposixmqcontrol create -q <queue> -s <maxsize> -d <maxdepth> "
+	    "[ -m <mode> ] [ -b <block> ] [-u <uid> ] [ -g <gid> ]\n"
+	    "\tposixmqcontrol send -q <queue> -c <content> "
+	    "[-p <priority> ]\n");
 }
 
 /* end of SUBCOMMANDS */
@@ -725,40 +747,60 @@ grace(int err_number)
 /* careful: these 'names' arrays must be terminated by a null pointer. */
 static const char *names_queue[] = {"-q", "--queue", "-t", "--topic", NULL};
 static const struct Option option_queue = {
-	names_queue, parse_queue, validate_queue};
+	.pattern = names_queue,
+	.parse = parse_queue,
+	.validate = validate_queue};
 static const struct Option option_single_queue = {
-	names_queue, parse_single_queue, validate_single_queue};
+	.pattern = names_queue,
+	.parse = parse_single_queue,
+	.validate = validate_single_queue};
 static const char *names_depth[] = {"-d", "--depth", "--maxmsg", NULL};
 static const struct Option option_depth = {
-	names_depth, parse_depth, validate_always_true};
+	.pattern = names_depth,
+	.parse = parse_depth,
+	.validate = validate_always_true};
 static const char *names_size[] = {"-s", "--size", "--msgsize", NULL};
 static const struct Option option_size = {
-	names_size, parse_size, validate_always_true};
+	.pattern = names_size,
+	.parse = parse_size,
+	.validate = validate_always_true};
 static const char *names_block[] = {"-b", "--block", NULL};
 static const struct Option option_block = {
-	names_block, parse_block, validate_always_true};
+	.pattern = names_block,
+	.parse = parse_block,
+	.validate = validate_always_true};
 static const char *names_content[] = {
 	"-c", "--content", "--data", "--message", NULL};
 static const struct Option option_content = {
-	names_content, parse_content, validate_content};
+	.pattern = names_content,
+	.parse = parse_content,
+	.validate = validate_content};
 static const char *names_priority[] = {"-p", "--priority", NULL};
-static const struct Option option_priority = {names_priority,
-	parse_priority, validate_always_true};
+static const struct Option option_priority = {
+	.pattern = names_priority,
+	.parse = parse_priority,
+	.validate = validate_always_true};
 static const char *names_mode[] = {"-m", "--mode", NULL};
 static const struct Option option_mode = {
-	names_mode, parse_mode, validate_mode};
+	.pattern = names_mode,
+	.parse = parse_mode,
+	.validate = validate_mode};
 static const char *names_group[] = {"-g", "--gid", NULL};
 static const struct Option option_group = {
-	names_group, parse_group, validate_always_true};
+	.pattern = names_group,
+	.parse = parse_group,
+	.validate = validate_always_true};
 static const char *names_user[] = {"-u", "--uid", NULL};
 static const struct Option option_user = {
-	names_user, parse_user, validate_always_true};
+	.pattern = names_user,
+	.parse = parse_user,
+	.validate = validate_always_true};
 
 /* careful: these arrays must be terminated by a null pointer. */
 #ifdef __FreeBSD__
 static const struct Option *create_options[] = {
-	&option_queue, &option_depth, &option_size, &option_block, &option_mode,
-	&option_group, &option_user, NULL};
+	&option_queue, &option_depth, &option_size, &option_block,
+	&option_mode, &option_group, &option_user, NULL};
 #else  /* !__FreeBSD__ */
 static const struct Option *create_options[] = {
 	&option_queue, &option_depth, &option_size, &option_block,
@@ -784,10 +826,11 @@ main(int argc, const char *argv[])
 			parse_options(index, argc, argv, create_options);
 			if (validate_options(create_options)) {
 				int worst = 0;
-				struct element *it;
+				struct element *itq;
 
-				STAILQ_FOREACH(it, &queues, links) {
-					const char *queue = it->text;
+				STAILQ_FOREACH(itq, &queues, links) {
+					const char *queue = itq->text;
+
 					int result = create(queue, creation);
 					if (result != 0)
 						worst = result;
@@ -801,11 +844,12 @@ main(int argc, const char *argv[])
 			parse_options(index, argc, argv, info_options);
 			if (validate_options(info_options)) {
 				int worst = 0;
-				struct element *it;
+				struct element *itq;
 
-				STAILQ_FOREACH(it, &queues, links) {
-					const char *queue = it->text;
+				STAILQ_FOREACH(itq, &queues, links) {
+					const char *queue = itq->text;
 					int result = info(queue);
+
 					if (result != 0)
 						worst = result;
 				}
@@ -823,9 +867,11 @@ main(int argc, const char *argv[])
 				STAILQ_FOREACH(itq, &queues, links) {
 					const char *queue = itq->text;
 					struct element *itc;
+
 					STAILQ_FOREACH(itc, &contents, links) {
 						const char *content = itc->text;
 						int result = send(queue, content, priority);
+
 						if (result != 0)
 							worst = result;
 					}
@@ -835,7 +881,7 @@ main(int argc, const char *argv[])
 			}
 			return (EX_USAGE);
 		} else if (strcmp("recv", verb) == 0 ||
-			strcmp("receive", verb) == 0) {
+		    strcmp("receive", verb) == 0) {
 			parse_options(index, argc, argv, recv_options);
 			if (validate_options(recv_options)) {
 				const char *queue = STAILQ_FIRST(&queues)->text;
@@ -846,14 +892,14 @@ main(int argc, const char *argv[])
 
 			return (EX_USAGE);
 		} else if (strcmp("unlink", verb) == 0 ||
-			strcmp("rm", verb) == 0) {
+		    strcmp("rm", verb) == 0) {
 			parse_options(index, argc, argv, unlink_options);
 			if (validate_options(unlink_options)) {
 				int worst = 0;
-				struct element *it;
+				struct element *itq;
 
-				STAILQ_FOREACH(it, &queues, links) {
-					const char *queue = it->text;
+				STAILQ_FOREACH(itq, &queues, links) {
+					const char *queue = itq->text;
 					int result = rm(queue);
 
 					if (result != 0)
