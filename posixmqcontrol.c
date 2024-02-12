@@ -287,7 +287,10 @@ parse_user(const char *text)
 /* OPTIONS validators */
 
 static bool
-validate_always_true(void) { return (true); }
+validate_always_true(void)
+{
+	return (true);
+}
 
 static bool
 validate_content(void)
@@ -310,7 +313,10 @@ validate_depth(void)
 }
 
 static bool
-validate_mode(void) { return creation.mode > 0; }
+validate_mode(void)
+{
+	return creation.mode > 0;
+}
 
 static bool
 validate_queue(void)
@@ -539,7 +545,7 @@ rm(const char *queue)
 static char
 dual(mode_t mode, char display)
 {
-	return mode != 0 ? display : '-';
+	return (mode != 0 ? display : '-');
 }
 
 /* Select one of four display characters based on mode and modifier. */
@@ -552,7 +558,7 @@ quad(mode_t mode, mode_t modifier)
 		index += 1;
 	if (modifier)
 		index += 2;
-	return display[index];
+	return (display[index]);
 }
 
 /* queue: name of queue to be inspected. */
@@ -684,7 +690,7 @@ send(const char *queue, const char *text, unsigned q_priority)
 	}
 
 	int size = strlen(text);
-	
+
 	if (size > actual.mq_msgsize) {
 		warnx("truncating message to %ld characters.\n", actual.mq_msgsize);
 		size = actual.mq_msgsize;
