@@ -73,7 +73,9 @@ static struct element *
 malloc_element(const char *context)
 {
 	struct element *item = malloc(sizeof(struct element));
+
 	if (item == NULL)
+		/* the only non-EX_* prefixed exit code. */
 		err(1, "malloc(%s)", context);
 	return item;
 }
@@ -594,16 +596,16 @@ info(const char *queue)
 
 		fprintf(stdout, "UID: %u\nGID: %u\n", status.st_uid, status.st_gid);
 		fprintf(stdout, "MODE: %c%c%c%c%c%c%c%c%c%c\n",
-            dual(mode & 01000, 's'),
-		    dual(mode & 00400, 'r'),
-		    dual(mode & 00200, 'w'),
-		    quad(mode & 00100, mode & 04000),
-		    dual(mode & 00040, 'r'),
-		    dual(mode & 00020, 'w'),
-		    quad(mode & 00010, mode & 02000),
-		    dual(mode & 00004, 'r'),
-		    dual(mode & 00002, 'w'),
-		    dual(mode & 00001, 'x'));
+            dual(mode & S_ISVTX, 's'),
+		    dual(mode & S_IRUSR, 'r'),
+		    dual(mode & S_IWUSR, 'w'),
+		    quad(mode & S_IXUSR, mode & S_ISUID),
+		    dual(mode & S_IRGRP, 'r'),
+		    dual(mode & S_IWGRP, 'w'),
+		    quad(mode & S_IXGRP, mode & S_ISGID),
+		    dual(mode & S_IROTH, 'r'),
+		    dual(mode & S_IWOTH, 'w'),
+		    dual(mode & S_IXOTH, 'x'));
 	}
 #endif /* __FreeBSD__ */
 
@@ -912,7 +914,7 @@ main(int argc, const char *argv[])
 			return (EX_USAGE);
 		} else if (strcmp("help", verb) == 0) {
 			usage(stdout);
-			return (0);
+			return (EX_OK);
 		} else {
 			warnx("Unknown verb [%s]", verb);
 			return (EX_USAGE);
@@ -920,5 +922,5 @@ main(int argc, const char *argv[])
 	}
 
 	usage(stdout);
-	return (0);
+	return (EX_OK);
 }
