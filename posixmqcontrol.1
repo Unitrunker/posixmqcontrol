@@ -56,9 +56,9 @@
 .Sh DESCRIPTION
 The
 .Nm
-command manipulates the named POSIX message queue. It allows creating
-queues, inspecting queue metadata, altering group and user access
-to queues, dumping queue contents, and unlinking queues.
+command manipulates the named POSIX message queue.
+It allows creating queues, inspecting queue metadata, altering group and user
+access to queues, dumping queue contents, and unlinking queues.
 .Pp
 Unlinking removes the name from the system and frees underlying memory.
 .Pp
@@ -67,7 +67,8 @@ displayed by the
 .Ic info
 subcommand. This output is similar to running
 .Ic cat
-on a mqueuefs queue mounted under a mount point. This utility requires
+on a mqueuefs queue mounted under a mount point.
+This utility requires
 .Ic mqueuefs
 kernal module to be loaded but does not require
 .Ic mqueuefs
@@ -76,9 +77,10 @@ to be mounted as a file system.
 The following subcommands are provided:
 .Bl -tag -width truncate
 .It Ic create
-Create the named queues, if they do not already exist. More than one
-queue name may be created. The same depth and size are used to create
-all queues. If a queue exists, then the depth are size are optional.
+Create the named queues, if they do not already exist.
+More than one queue name may be created. The same depth and size are used to
+create all queues.
+If a queue exists, then the depth are size are optional.
 .Pp
 The required
 .Ar size
@@ -87,13 +89,15 @@ and
 arguments specify the maxmimum message size and maxmimum message depth.
 The optional numerical
 .Ar mode
-argument specifies the initial access mode. If the queue exists but does
-not match the requested size and depth, this utility will attempt to recreate
-the queue by first unlinking and then creating it. This will fail if the
-queue is not empty or is opened by other processes.
+argument specifies the initial access mode.
+If the queue exists but does not match the requested size and depth, this
+utility will attempt to recreate the queue by first unlinking and then creating
+it.
+This will fail if the queue is not empty or is opened by other processes.
 .It Ic rm
-Unlink the queues specified - one attempt per queue. Failure to unlink one
-queue does not stop this sub-command from attempting to unlink the others.
+Unlink the queues specified - one attempt per queue.
+Failure to unlink one queue does not stop this sub-command from attempting to
+unlink the others.
 .It Ic info
 For each named queue, dispay the maximum message size, maximum queue size,
 current queue depth, user owner id, group owner id, and mode permission bits.
@@ -101,19 +105,21 @@ current queue depth, user owner id, group owner id, and mode permission bits.
 Wait for a message from a single named queue and display the message to
 standard output.
 .It Ic send
-Send messages to one or more named queues. If multiple messages and multiple
-queues are specified, the utility attempts to send all messages to all queues.
+Send messages to one or more named queues.
+If multiple messages and multiple queues are specified, the utility attempts to
+send all messages to all queues.
 The optional -p priority, if omitted, defaults to MQ_PRIO_MAX / 2 or medium
 priority.
 .El
 .Sh SUMMARY
 .Nm
-allows you to move POSIX message queue administration out of your
-applications. Defining and adjusting queue attributes can be done
-without touching application code. To avoid down-time when altering
-queue attributes, consider creating a new queue and configure reading
-applications to drain both new and old queues. Retire the old queue
-once all writers have been updated to write to the new queue.
+allows you to move POSIX message queue administration out of your applications.
+Defining and adjusting queue attributes can be done without touching
+application code.
+To avoid down-time when altering queue attributes, consider creating a new
+queue and configure reading applications to drain both new and old queues.
+Retire the old queue once all writers have been updated to write to the new
+queue.
 .El
 .Sh EXIT STATUS
 .Ex -std
