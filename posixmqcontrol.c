@@ -77,7 +77,7 @@ malloc_element(const char *context)
 	if (item == NULL)
 		/* the only non-EX_* prefixed exit code. */
 		err(1, "malloc(%s)", context);
-	return item;
+	return (item);
 }
 
 static STAILQ_HEAD(tqh, element)
@@ -98,6 +98,7 @@ static struct Creation creation = {
 	.user = 0
 };
 static const mqd_t fail = (mqd_t)-1;
+static const mode_t accepted_mode_bits = S_IRWXU|S_IRWXG|S_IRWXO|S_ISUID|S_ISGID|S_ISTXT;
 
 /* OPTIONS parsing utilitarian */
 
@@ -107,7 +108,7 @@ parse_long(const char *text, long *capture, const char *knob, const char *name)
 	char *cursor = NULL;
 	long value = strtol(text, &cursor, 10);
 
-	if (cursor > text) {
+	if (cursor > text && *cursor == 0) {
 		*capture = value;
 	} else {
 		warnx("%s %s invalid format [%s].", knob, name, text);
@@ -121,7 +122,7 @@ parse_unsigned(const char *text, bool *set,
 	char *cursor = NULL;
 	unsigned value = strtoul(text, &cursor, 8);
 
-	if (cursor > text) {
+	if (cursor > text && *cursor == 0) {
 		*set = true;
 		*capture = value;
 	} else {
@@ -215,7 +216,8 @@ parse_mode(const char *text)
 	char *cursor = NULL;
 	long value = strtol(text, &cursor, 8);
 
-	if (cursor > text && value > 0 && value < 010000) {
+	// verify only accepted mode bits are set.
+	if (cursor > text && *cursor == 0 && (value & accepted_mode_bits) == value) {
 		creation.set_mode = true;
 		creation.mode = (mode_t)value;
 	} else {
@@ -229,7 +231,7 @@ parse_priority(const char *text)
 	char *cursor = NULL;
 	long value = strtol(text, &cursor, 10);
 
-	if (cursor > text) {
+	if (cursor > text && *cursor == 0) {
 		if (value >= 0 && value < MQ_PRIO_MAX) {
 			priority = value;
 		} else {
@@ -310,12 +312,6 @@ validate_depth(void)
 	if (!valid)
 		warnx("-d maximum queue depth not provided.");
 	return (valid);
-}
-
-static bool
-validate_mode(void)
-{
-	return creation.mode > 0;
 }
 
 static bool
@@ -510,7 +506,7 @@ create(const char *queue, struct Creation q_creation)
 
 	/* do this only if altering mode of an existing queue. */
 	if (q_creation.exists && q_creation.set_mode &&
-	    q_creation.mode != (status.st_mode & 0x06777)) {
+	    q_creation.mode != (status.st_mode & accepted_mode_bits)) {
 		result = fchmod(fd, q_creation.mode);
 		if (result != 0) {
 			errno_t what = errno;
@@ -602,7 +598,7 @@ info(const char *queue)
 
 		fprintf(stdout, "UID: %u\nGID: %u\n", status.st_uid, status.st_gid);
 		fprintf(stdout, "MODE: %c%c%c%c%c%c%c%c%c%c\n",
-            dual(mode & S_ISVTX, 's'),
+		    dual(mode & S_ISVTX, 's'),
 		    dual(mode & S_IRUSR, 'r'),
 		    dual(mode & S_IWUSR, 'w'),
 		    quad(mode & S_IXUSR, mode & S_ISUID),
@@ -792,7 +788,7 @@ static const char *names_mode[] = {"-m", "--mode", NULL};
 static const struct Option option_mode = {
 	.pattern = names_mode,
 	.parse = parse_mode,
-	.validate = validate_mode};
+	.validate = validate_always_true};
 static const char *names_group[] = {"-g", "--gid", NULL};
 static const struct Option option_group = {
 	.pattern = names_group,
