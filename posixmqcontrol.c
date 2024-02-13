@@ -639,7 +639,7 @@ recv(const char *queue)
 		return (what);
 	}
 
-	char *text = (char *)malloc(actual.mq_msgsize + 1);
+	char *text = malloc(actual.mq_msgsize + 1);
 	unsigned q_priority = 0;
 
 	memset(text, 0, actual.mq_msgsize + 1);
