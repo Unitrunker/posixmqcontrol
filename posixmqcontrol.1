@@ -56,21 +56,24 @@
 .Sh DESCRIPTION
 The
 .Nm
-command manipulates the named POSIX message queue.
+command allows separating POSIX message queue administration from application
+stack.
+Defining and adjusting queue attributes can be done without touching
+application code.
 It allows creating queues, inspecting queue metadata, altering group and user
 access to queues, dumping queue contents, and unlinking queues.
 .Pp
 Unlinking removes the name from the system and frees underlying memory.
 .Pp
-The maximum message size, maximum queue size, and current queue depth are
+The maximum message size, maximum queue size, and current queue size are
 displayed by the
 .Ic info
 subcommand. This output is similar to running
 .Ic cat
 on a mqueuefs queue mounted under a mount point.
-This utility requires
+This utility requires the
 .Ic mqueuefs
-kernal module to be loaded but does not require
+kernel module to be loaded but does not require
 .Ic mqueuefs
 to be mounted as a file system.
 .Pp
@@ -78,15 +81,16 @@ The following subcommands are provided:
 .Bl -tag -width truncate
 .It Ic create
 Create the named queues, if they do not already exist.
-More than one queue name may be created. The same depth and size are used to
-create all queues.
-If a queue exists, then the depth are size are optional.
+More than one queue name may be created. The same maximum queue depth and
+maximum message size are used to create all queues.
+If a queue exists, then depth and size are optional.
 .Pp
 The required
 .Ar size
 and
 .Ar depth
-arguments specify the maxmimum message size and maxmimum message depth.
+arguments specify the maximum message size (bytes per message) and maximum queue
+size (depth or number of messages in the queue).
 The optional numerical
 .Ar mode
 argument specifies the initial access mode.
@@ -111,16 +115,16 @@ send all messages to all queues.
 The optional -p priority, if omitted, defaults to MQ_PRIO_MAX / 2 or medium
 priority.
 .El
-.Sh SUMMARY
-.Nm
-allows you to move POSIX message queue administration out of your applications.
-Defining and adjusting queue attributes can be done without touching
-application code.
+.Sh NOTES
+A change of queue geometry (maximum message size and/or maximum number of
+messages) requires destroying and re-creating the queue.
+As a safety feature,
+the create subcommand refuses to destroy a non-empty queue.
+If you use the rm subcommand to destroy a queue, any queued messages are lost.
 To avoid down-time when altering queue attributes, consider creating a new
 queue and configure reading applications to drain both new and old queues.
 Retire the old queue once all writers have been updated to write to the new
 queue.
-.El
 .Sh EXIT STATUS
 .Ex -std
 .Bl -bullet
@@ -139,7 +143,7 @@ use the command
 .It
 To create a queue with the name
 .Pa /2
-with message size 100 and maximum queue depth 10,
+with maximum message size 100 and maximum queue depth 10,
 use the command
 .Dl "posixmqcontrol create -q /2 -s 100 -d 10"
 .It
