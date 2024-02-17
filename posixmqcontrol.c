@@ -141,7 +141,7 @@ sane_queue(const char *queue)
 		return (false);
 	}
 
-	for (size++; queue[size] != 0 && size < NAME_MAX; size++) {		
+	for (size++; queue[size] != 0 && size < NAME_MAX; size++) {
 		if (queue[size] == '/') {
 			warnx("queue name [%-.*s] - only one '/' permitted.",
 			    NAME_MAX, queue);
