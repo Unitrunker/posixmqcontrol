@@ -99,7 +99,7 @@ static struct Creation creation = {
 };
 static const mqd_t fail = (mqd_t)-1;
 static const mode_t accepted_mode_bits =
-    S_IRWXU|S_IRWXG|S_IRWXO|S_ISUID|S_ISGID|S_ISTXT;
+    S_IRWXU | S_IRWXG | S_IRWXO | S_ISUID | S_ISGID | S_ISTXT;
 
 /* OPTIONS parsing utilitarian */
 
