@@ -98,7 +98,8 @@ static struct Creation creation = {
 	.user = 0
 };
 static const mqd_t fail = (mqd_t)-1;
-static const mode_t accepted_mode_bits = S_IRWXU|S_IRWXG|S_IRWXO|S_ISUID|S_ISGID|S_ISTXT;
+static const mode_t accepted_mode_bits =
+    S_IRWXU|S_IRWXG|S_IRWXO|S_ISUID|S_ISGID|S_ISTXT;
 
 /* OPTIONS parsing utilitarian */
 
@@ -131,31 +132,26 @@ parse_unsigned(const char *text, bool *set,
 }
 
 static bool
-sane_queue(const char *text)
+sane_queue(const char *queue)
 {
 	int size = 0;
-	const char *queue = text;
 
-	if (*queue != '/') {
-		warnx("queue name [%-.*s] must start with '/'.", NAME_MAX, text);
+	if (queue[size] != '/') {
+		warnx("queue name [%-.*s] must start with '/'.", NAME_MAX, queue);
 		return (false);
 	}
 
-	queue++;
-	size++;
-	while (*queue != 0 && size < NAME_MAX) {
-		if (*queue == '/') {
+	for (size++; queue[size] != 0 && size < NAME_MAX; size++) {		
+		if (queue[size] == '/') {
 			warnx("queue name [%-.*s] - only one '/' permitted.",
-			    NAME_MAX, text);
+			    NAME_MAX, queue);
 			return (false);
 		}
-		queue++;
-		size++;
 	}
 
-	if (size == NAME_MAX && *queue) {
+	if (size == NAME_MAX && queue[size] != 0) {
 		warnx("queue name [%-.*s...] may not be longer than %d.",
-		    NAME_MAX, text, NAME_MAX);
+		    NAME_MAX, queue, NAME_MAX);
 		return (false);
 	}
 	return (true);
